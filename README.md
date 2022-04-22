@@ -7,11 +7,11 @@ anytime without any notice, please fork it if you need a stable release.**
 
 ## Overview
 
-Run multiple (up to 256) WireGuard peers with `AllowedIPs=0.0.0.0/0, ::0` over
-a single UDP port with `reserved_zero[3]` in WireGuard protocol.
+Run multiple (up to 256) WireGuard interfaces with `AllowedIPs=0.0.0.0/0, ::0`
+over one UDP port with `reserved_zero[3]` in WireGuard protocol.
 
-This project is internally used in haruue-net to reduce the port requirement of
-some mystery traffic forwarding services.
+This project is internally used in haruue-net to reduce the ports requirement
+of some mystery traffic forwarding services.
 
 DF (Don't Fragment) in the IP header is always removed since I don't like it.
 
@@ -19,7 +19,7 @@ DF (Don't Fragment) in the IP header is always removed since I don't like it.
 ## Installation
 
 ```bash
-go get github.com/haruue-net/mwgp/cmd/mwgp
+go install github.com/haruue-net/mwgp/cmd/mwgp@latest
 ```
 
 
