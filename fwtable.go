@@ -26,7 +26,6 @@ type forwardTableValue struct {
 func (v *forwardTableValue) reverseForwardLoop() {
 	var recvBuffer [kMTU]byte
 	for {
-		v.exited.Store(false)
 		readLen, err := v.dstConn.Read(recvBuffer[:])
 		if err != nil {
 			log.Printf("[error] failed to read when forward from %s to %s: %s\n", v.dstAddr, v.srcAddr, err.Error())
@@ -89,6 +88,7 @@ func (t *forwardTable) createAndBeginReverseForward(srcAddr, dstAddr *net.UDPAdd
 		dstConn: dstConn,
 	}
 	value.updateExpire()
+	value.exited.Store(false)
 	t.lock.Lock()
 	if originValue, ok := t.table[key]; ok {
 		if originValue != nil {
