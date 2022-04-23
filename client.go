@@ -55,6 +55,10 @@ func (c *Client) Start() (err error) {
 	for {
 		var recvBuffer [kMTU]byte
 		readLen, srcAddr, err := conn.ReadFromUDP(recvBuffer[:])
+		if err != nil {
+			log.Printf("[error] failed when read udp from main conn: %s", err.Error())
+			break
+		}
 		packet := recvBuffer[:readLen]
 		mangledPacket, err := c.manglePacket(packet)
 		if err != nil {
@@ -66,6 +70,7 @@ func (c *Client) Start() (err error) {
 			log.Printf("[error] failed to process packet forward from %s to %s: %s", srcAddr, c.serverAddr, err.Error())
 		}
 	}
+	return
 }
 
 func (c *Client) manglePacket(packet []byte) (outPacket []byte, err error) {
