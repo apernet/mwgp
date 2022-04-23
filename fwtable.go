@@ -3,7 +3,6 @@ package mwgp
 import (
 	"log"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -62,7 +61,6 @@ func (v *forwardTableValue) Close() (err error) {
 
 type forwardTable struct {
 	table     map[forwardTableKey]*forwardTableValue
-	lock      sync.RWMutex
 	timeout   time.Duration
 	lastPurge time.Time
 }
@@ -89,14 +87,12 @@ func (t *forwardTable) createAndBeginReverseForward(srcAddr, dstAddr *net.UDPAdd
 	}
 	value.updateExpire()
 	value.exited.Store(false)
-	t.lock.Lock()
 	if originValue, ok := t.table[key]; ok {
 		if originValue != nil {
 			_ = originValue.Close()
 		}
 	}
 	t.table[key] = &value
-	t.lock.Unlock()
 	go value.reverseForwardLoop()
 	log.Printf("[info] forward created: %s <-> %s\n", srcAddr, dstAddr)
 	return &value
@@ -106,8 +102,6 @@ func (t *forwardTable) purgeExpired() {
 	if t.lastPurge.Add(t.timeout).After(time.Now()) {
 		return
 	}
-	t.lock.Lock()
-	defer t.lock.Unlock()
 	var keysToRemove []forwardTableKey
 	for k, v := range t.table {
 		if v == nil || v.isExpired() {
@@ -129,9 +123,7 @@ func (t *forwardTable) forwardPacket(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr,
 		srcIP:   srcAddr.IP.String(),
 		srcPort: srcAddr.Port,
 	}
-	t.lock.RLock()
 	value := t.table[key]
-	t.lock.RUnlock()
 	if value != nil {
 		isRecreateRequired := false
 		if value.isExpired() {
@@ -143,10 +135,8 @@ func (t *forwardTable) forwardPacket(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr,
 			isRecreateRequired = true
 		}
 		if isRecreateRequired {
-			t.lock.Lock()
 			_ = value.Close()
 			delete(t.table, key)
-			t.lock.Unlock()
 		}
 	}
 	if value == nil {
