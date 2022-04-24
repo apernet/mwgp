@@ -137,6 +137,7 @@ func (t *forwardTable) forwardPacket(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr,
 		if isRecreateRequired {
 			_ = value.Close()
 			delete(t.table, key)
+			value = nil
 		}
 	}
 	if value == nil {
@@ -150,6 +151,12 @@ func (t *forwardTable) forwardPacket(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr,
 	}
 	value.updateExpire()
 	_, err = value.dstConn.Write(packet)
+	if err != nil {
+		log.Printf("[error] failed to write dst conn of %s\n", dstAddr)
+		// recreate dst conn in next loop
+		_ = value.Close()
+		delete(t.table, key)
+	}
 	return
 }
 
