@@ -11,6 +11,7 @@ type ClientConfig struct {
 	ID      int    `json:"id"`
 	Listen  string `json:"listen"`
 	Timeout int    `json:"timeout"`
+	XORKey  string `json:"xor_key"`
 }
 
 type Client struct {
@@ -18,6 +19,7 @@ type Client struct {
 	serverAddr *net.UDPAddr
 	listenAddr *net.UDPAddr
 	fwTable    *forwardTable
+	xorKey     []byte
 }
 
 func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
@@ -35,11 +37,16 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 		err = ErrInvalidPeerID{ID: config.ID}
 		return
 	}
+	var xorKeyBs []byte
+	if len(config.XORKey) > 0 {
+		xorKeyBs = []byte(config.XORKey)
+	}
 	client := Client{
 		id:         config.ID,
 		serverAddr: serverAddr,
 		listenAddr: listenAddr,
 		fwTable:    newForwardTable(time.Duration(config.Timeout) * time.Second),
+		xorKey:     xorKeyBs,
 	}
 	outClient = &client
 	return
@@ -78,6 +85,11 @@ func (c *Client) manglePacket(packet []byte) (outPacket []byte, err error) {
 		err = ErrPacketTooShort{Length: len(packet)}
 	}
 	packet[1] = byte(c.id)
+	if c.xorKey != nil {
+		for i := 0; i < len(packet); i++ {
+			packet[i] ^= c.xorKey[i%len(c.xorKey)]
+		}
+	}
 	outPacket = packet
 	return
 }

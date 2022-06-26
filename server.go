@@ -19,6 +19,7 @@ type ServerConfigPeer struct {
 type ServerConfig struct {
 	Listen  string             `json:"listen"`
 	Timeout int                `json:"timeout"`
+	XORKey  string             `json:"xor_key"`
 	Peers   []ServerConfigPeer `json:"peers"`
 }
 
@@ -30,6 +31,7 @@ type Server struct {
 	listen  *net.UDPAddr
 	peers   [kMaxPeersCount]*serverPeer
 	fwTable *forwardTable
+	xorKey  []byte
 }
 
 func NewServerWithConfig(config *ServerConfig) (outServer *Server, err error) {
@@ -38,9 +40,14 @@ func NewServerWithConfig(config *ServerConfig) (outServer *Server, err error) {
 		err = ErrResolveAddr{Type: "listen", Addr: config.Listen, Cause: rerr}
 		return
 	}
+	var xorKeyBs []byte
+	if len(config.XORKey) > 0 {
+		xorKeyBs = []byte(config.XORKey)
+	}
 	server := Server{
 		listen:  listenAddr,
 		fwTable: newForwardTable(time.Duration(config.Timeout) * time.Second),
+		xorKey:  xorKeyBs,
 	}
 	for _, peer := range config.Peers {
 		if peer.ID < 0 || peer.ID >= kMaxPeersCount {
@@ -96,6 +103,11 @@ func (s *Server) Start() (err error) {
 func (s *Server) demanglePacket(packet []byte) (outPacket []byte, peerID int, err error) {
 	if len(packet) < 4 {
 		err = ErrPacketTooShort{Length: len(packet)}
+	}
+	if s.xorKey != nil {
+		for i := 0; i < len(packet); i++ {
+			packet[i] ^= s.xorKey[i%len(s.xorKey)]
+		}
 	}
 	peerID = int(packet[1])
 	packet[1] = 0
