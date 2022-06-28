@@ -1,6 +1,7 @@
 package mwgp
 
 import (
+	"context"
 	"log"
 	"net"
 	"time"
@@ -12,21 +13,26 @@ type ClientConfig struct {
 	Listen  string `json:"listen"`
 	Timeout int    `json:"timeout"`
 	XORKey  string `json:"xor_key"`
+	DNS     string `json:"dns"`
 }
 
 type Client struct {
 	id         int
-	serverAddr *net.UDPAddr
+	server     string
 	listenAddr *net.UDPAddr
 	fwTable    *forwardTable
 	xorKey     []byte
 }
 
 func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
-	serverAddr, rerr := net.ResolveUDPAddr("udp", config.Server)
-	if rerr != nil {
-		err = ErrResolveAddr{Type: "server", Addr: config.Server, Cause: rerr}
-		return
+	if config.DNS != "" {
+		net.DefaultResolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{}
+				return d.DialContext(ctx, "udp", config.DNS)
+			},
+		}
 	}
 	listenAddr, rerr := net.ResolveUDPAddr("udp", config.Listen)
 	if rerr != nil {
@@ -43,7 +49,7 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 	}
 	client := Client{
 		id:         config.ID,
-		serverAddr: serverAddr,
+		server:     config.Server,
 		listenAddr: listenAddr,
 		fwTable:    newForwardTable(time.Duration(config.Timeout) * time.Second),
 		xorKey:     xorKeyBs,
@@ -59,6 +65,22 @@ func (c *Client) Start() (err error) {
 		return
 	}
 	defer conn.Close()
+
+	var serverAddr *net.UDPAddr
+
+	go func() {
+		for {
+			sa, rerr := net.ResolveUDPAddr("udp", c.server)
+			if rerr != nil {
+				log.Printf("[error] failed to resolve server addr %s: %s, retry in 10 seconds", c.server, err.Error())
+				time.Sleep(10 * time.Second)
+				continue
+			}
+			serverAddr = sa
+			time.Sleep(5 * time.Minute)
+		}
+	}()
+
 	for {
 		var recvBuffer [kMTU]byte
 		readLen, srcAddr, err := conn.ReadFromUDP(recvBuffer[:])
@@ -72,9 +94,13 @@ func (c *Client) Start() (err error) {
 			log.Printf("[warn] failed to mangle packet from %s: %s", srcAddr, err.Error())
 			continue
 		}
-		err = c.fwTable.forwardPacket(srcAddr, c.serverAddr, conn, mangledPacket)
+		if serverAddr == nil {
+			// drop silently
+			continue
+		}
+		err = c.fwTable.forwardPacket(srcAddr, serverAddr, conn, mangledPacket)
 		if err != nil {
-			log.Printf("[error] failed to process packet forward from %s to %s: %s", srcAddr, c.serverAddr, err.Error())
+			log.Printf("[error] failed to process packet forward from %s to %s: %s", srcAddr, serverAddr, err.Error())
 		}
 	}
 	return
