@@ -72,7 +72,7 @@ func (c *Client) Start() (err error) {
 		for {
 			sa, rerr := net.ResolveUDPAddr("udp", c.server)
 			if rerr != nil {
-				log.Printf("[error] failed to resolve server addr %s: %s, retry in 10 seconds", c.server, err.Error())
+				log.Printf("[error] failed to resolve server addr %s: %s, retry in 10 seconds", c.server, rerr.Error())
 				time.Sleep(10 * time.Second)
 				continue
 			}
