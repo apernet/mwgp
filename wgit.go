@@ -360,7 +360,7 @@ func (t *WireGuardIndexTranslationTable) processClientMessageInitiation(src *net
 	t.clientMap[peer.clientProxyIndex] = peer
 	t.mapLock.Unlock()
 
-	log.Printf("[info] received message initiation from client, peer create stage 1: %s(idx:%d->%d) <=> %s\n",
+	log.Printf("[info] received message initiation from client, peer create stage #1: %s(idx:%08x->%08x) <=> %s\n",
 		peer.clientDestination.String(), peer.clientOriginIndex, peer.clientProxyIndex,
 		peer.serverDestination.String())
 
@@ -386,13 +386,13 @@ func (t *WireGuardIndexTranslationTable) processServerMessageResponse(src *net.U
 		peer.serverOriginIndex = msg.Sender
 		peer.serverProxyIndex = t.generateProxyIndexLocked(t.serverMap, peer.serverOriginIndex)
 		t.serverMap[peer.serverProxyIndex] = peer
-		log.Printf("[info] received message response from server, peer create stage 2: %s(idx:%d->%d) <=> %s(idx:%d->%d)\n",
+		log.Printf("[info] received message response from server, peer create stage #2: %s(idx:%08x->%08x) <=> %s(idx:%08x->%08x)\n",
 			peer.clientDestination.String(), peer.clientOriginIndex, peer.clientProxyIndex,
 			peer.serverDestination.String(), peer.serverOriginIndex, peer.serverProxyIndex)
 		return
 	}
 
-	err = fmt.Errorf("no matched peer found for clientMap[%d], referred by MessageResponse.Receiver from server %s", msg.Receiver, src.String())
+	err = fmt.Errorf("no matched peer found for clientMap[%08x], referred by MessageResponse.Receiver from server %s", msg.Receiver, src.String())
 	return
 }
 
@@ -408,7 +408,7 @@ func (t *WireGuardIndexTranslationTable) processServerMessageCookieReply(src *ne
 	t.mapLock.RUnlock()
 
 	if !ok {
-		err = fmt.Errorf("no matched peer found for clientMap[%d], referred by MessageCookieReply.Receiver from server %s", msg.Receiver, src.String())
+		err = fmt.Errorf("no matched peer found for clientMap[%08x], referred by MessageCookieReply.Receiver from server %s", msg.Receiver, src.String())
 		return
 	}
 
@@ -425,9 +425,9 @@ func (t *WireGuardIndexTranslationTable) processMessageTransport(packet *PacketW
 	}
 	if receiverIndex == 0 {
 		if s2c {
-			err = fmt.Errorf("received message type %d from server %s with impossible receiver_index=0", packet.MessageType(), packet.Source.String())
+			err = fmt.Errorf("received message transport from server %s with impossible receiver_index=0", packet.Source.String())
 		} else {
-			err = fmt.Errorf("received message type %d from client %s with impossible receiver_index=0", packet.MessageType(), packet.Source.String())
+			err = fmt.Errorf("received message transport from client %s with impossible receiver_index=0", packet.Source.String())
 		}
 		return
 	}
@@ -446,9 +446,9 @@ func (t *WireGuardIndexTranslationTable) processMessageTransport(packet *PacketW
 
 	if !ok {
 		if s2c {
-			err = fmt.Errorf("no matched peer found for clientMap[%d], referred by packet from server %s", receiverIndex, packet.Source.String())
+			err = fmt.Errorf("no matched peer found for clientMap[%08x], referred by packet from server %s", receiverIndex, packet.Source.String())
 		} else {
-			err = fmt.Errorf("no matched peer found for serverMap[%d], referred by packet from client %s", receiverIndex, packet.Source.String())
+			err = fmt.Errorf("no matched peer found for serverMap[%08x], referred by packet from client %s", receiverIndex, packet.Source.String())
 		}
 		return
 	}
@@ -536,7 +536,7 @@ func (t *WireGuardIndexTranslationTable) handlePeersExpireCheck(current time.Tim
 		if peer.lastActive.Load().(time.Time).Before(current.Add(-t.Timeout)) {
 			delete(t.clientMap, peer.clientProxyIndex)
 			delete(t.serverMap, peer.serverProxyIndex)
-			log.Printf("[info] expire peer %s (idx:%d->%d) <=> %s (idx:%d->%d)\n",
+			log.Printf("[info] expire peer %s (idx:%08x->%08x) <=> %s (idx:%08x->%08x)\n",
 				peer.clientDestination.String(), peer.clientOriginIndex, peer.clientProxyIndex,
 				peer.serverDestination.String(), peer.serverOriginIndex, peer.serverProxyIndex)
 		}
