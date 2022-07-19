@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/haruue-net/mwgp"
-	"io"
+	"github.com/spf13/cobra"
 	"io/ioutil"
-	"log"
 	"os"
 )
 
@@ -14,9 +13,57 @@ var (
 	MWGPVersion = "2.0.0"
 )
 
-func printUsage(w io.Writer) {
-	_, _ = fmt.Fprintf(w, "mwgp %s\n", MWGPVersion)
-	_, _ = fmt.Fprintf(w, "Usage: mwgp [server|client] config.json\n")
+var rootCmd = cobra.Command{
+	Use:     "mwgp",
+	Version: MWGPVersion,
+}
+
+var serverCmd = cobra.Command{
+	Use:   "server config.json",
+	Short: "Start a mwgp server",
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		if len(os.Args) != 1 {
+			err = fmt.Errorf("excepted 1 argument as config file")
+			return
+		}
+		configPath := os.Args[0]
+		config, err := ioutil.ReadFile(configPath)
+		if err != nil {
+			return
+		}
+		err = startServer(config)
+		if err != nil {
+			return
+		}
+		return
+	},
+}
+
+var clientCmd = cobra.Command{
+	Use:     "client config.json",
+	Short:   "Start a mwgp client",
+	Example: "mwgp client config.json",
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		if len(os.Args) != 1 {
+			err = fmt.Errorf("excepted 1 argument as config file")
+			return
+		}
+		configPath := os.Args[0]
+		config, err := ioutil.ReadFile(configPath)
+		if err != nil {
+			return
+		}
+		err = startClient(config)
+		if err != nil {
+			return
+		}
+		return
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(&serverCmd)
+	rootCmd.AddCommand(&clientCmd)
 }
 
 func startServer(config []byte) (err error) {
@@ -46,30 +93,5 @@ func startClient(config []byte) (err error) {
 }
 
 func main() {
-	for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" || arg == "--version" {
-			printUsage(os.Stdout)
-			os.Exit(0)
-		}
-	}
-	if len(os.Args) != 3 {
-		printUsage(os.Stderr)
-		os.Exit(22)
-	}
-	subcommand := os.Args[1]
-	configPath := os.Args[2]
-	config, err := ioutil.ReadFile(configPath)
-	if err != nil {
-		log.Fatalf("failed to read config file %s: %s\n", configPath, err.Error())
-	}
-	switch subcommand {
-	case "server":
-		log.Fatal(startServer(config))
-	case "client":
-		log.Fatal(startClient(config))
-	default:
-		printUsage(os.Stderr)
-		os.Exit(22)
-	}
-
+	_ = rootCmd.Execute()
 }
