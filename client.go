@@ -2,26 +2,28 @@ package mwgp
 
 import (
 	"context"
+	"fmt"
+	"golang.zx2c4.com/wireguard/device"
 	"log"
 	"net"
 	"time"
 )
 
 type ClientConfig struct {
-	Server  string `json:"server"`
-	ID      int    `json:"id"`
-	Listen  string `json:"listen"`
-	Timeout int    `json:"timeout"`
-	XORKey  string `json:"xor_key"`
-	DNS     string `json:"dns"`
+	Server                    string         `json:"server"`
+	Listen                    string         `json:"listen"`
+	Timeout                   int            `json:"timeout"`
+	DNS                       string         `json:"dns,omitempty"`
+	ClientSourceValidateLevel int            `json:"csvl,omitempty"`
+	ServerSourceValidateLevel int            `json:"ssvl,omitempty"`
+	ClientPublicKey           NoisePublicKey `json:"client_pubkey"`
+	ServerPublicKey           NoisePublicKey `json:"server_pubkey"`
 }
 
 type Client struct {
-	id         int
-	server     string
-	listenAddr *net.UDPAddr
-	fwTable    *forwardTable
-	xorKey     []byte
+	wgitTable        *WireGuardIndexTranslationTable
+	server           string
+	cachedServerPeer ServerConfigPeer
 }
 
 func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
@@ -34,40 +36,33 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 			},
 		}
 	}
-	listenAddr, rerr := net.ResolveUDPAddr("udp", config.Listen)
-	if rerr != nil {
-		err = ErrResolveAddr{Type: "listen", Addr: config.Listen, Cause: rerr}
+
+	client := Client{}
+	client.wgitTable = NewWireGuardIndexTranslationTable()
+	client.wgitTable.ClientListen, err = net.ResolveUDPAddr("udp", config.Listen)
+	if err != nil {
+		err = fmt.Errorf("invalid listen address %s: %w", config.Listen, err)
 		return
 	}
-	if config.ID < 0 || config.ID >= kMaxPeersCount {
-		err = ErrInvalidPeerID{ID: config.ID}
-		return
-	}
-	var xorKeyBs []byte
-	if len(config.XORKey) > 0 {
-		xorKeyBs = []byte(config.XORKey)
-	}
-	client := Client{
-		id:         config.ID,
-		server:     config.Server,
-		listenAddr: listenAddr,
-		fwTable:    newForwardTable(time.Duration(config.Timeout) * time.Second),
-		xorKey:     xorKeyBs,
-	}
+	client.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
+	client.wgitTable.ExtractPeerFunc = client.generateServerPeer
+	client.cachedServerPeer.serverPublicKey = config.ServerPublicKey
+	client.cachedServerPeer.ClientPublicKey = &config.ClientPublicKey
+
 	outClient = &client
 	return
 }
 
-func (c *Client) Start() (err error) {
-	var conn *net.UDPConn
-	conn, err = net.ListenUDP("udp", c.listenAddr)
-	if err != nil {
+func (c *Client) generateServerPeer(msg *device.MessageInitiation) (fi *ServerConfigPeer, err error) {
+	if c.cachedServerPeer.forwardToAddress == nil {
+		err = fmt.Errorf("forward_to address is not resolved yet")
 		return
 	}
-	defer conn.Close()
+	fi = &c.cachedServerPeer
+	return
+}
 
-	var serverAddr *net.UDPAddr
-
+func (c *Client) Start() (err error) {
 	go func() {
 		for {
 			sa, rerr := net.ResolveUDPAddr("udp", c.server)
@@ -76,46 +71,12 @@ func (c *Client) Start() (err error) {
 				time.Sleep(10 * time.Second)
 				continue
 			}
-			serverAddr = sa
+			c.cachedServerPeer.forwardToAddress = sa
+			c.wgitTable.UpdateAllServerDestinationChan <- sa
 			time.Sleep(5 * time.Minute)
 		}
 	}()
-
-	for {
-		var recvBuffer [kMTU]byte
-		readLen, srcAddr, err := conn.ReadFromUDP(recvBuffer[:])
-		if err != nil {
-			log.Printf("[error] failed when read udp from main conn: %s", err.Error())
-			break
-		}
-		packet := recvBuffer[:readLen]
-		mangledPacket, err := c.manglePacket(packet)
-		if err != nil {
-			log.Printf("[warn] failed to mangle packet from %s: %s", srcAddr, err.Error())
-			continue
-		}
-		if serverAddr == nil {
-			// drop silently
-			continue
-		}
-		err = c.fwTable.forwardPacket(srcAddr, serverAddr, conn, mangledPacket)
-		if err != nil {
-			log.Printf("[error] failed to process packet forward from %s to %s: %s", srcAddr, serverAddr, err.Error())
-		}
-	}
-	return
-}
-
-func (c *Client) manglePacket(packet []byte) (outPacket []byte, err error) {
-	if len(packet) < 4 {
-		err = ErrPacketTooShort{Length: len(packet)}
-	}
-	packet[1] = byte(c.id)
-	if c.xorKey != nil {
-		for i := 0; i < len(packet); i++ {
-			packet[i] ^= c.xorKey[i%len(c.xorKey)]
-		}
-	}
-	outPacket = packet
+	log.Printf("[info] listen on %s ...\n", c.wgitTable.ClientListen)
+	err = c.wgitTable.Serve()
 	return
 }

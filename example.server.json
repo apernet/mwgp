@@ -1,0 +1,25 @@
+{
+  "listen": ":1000",
+  "timeout": 60,
+  "servers": [
+    {
+      "privkey": "EFt3ELmZeM/M47qFkgF4RbSOijtdHS43BNIxvxstREI=",
+      "address": "192.0.2.1",
+      "peers": [
+        { "pubkey": "mCXTsTRyjQKV74eWR2Ka1LIdIptCG9K0FXlrG2NC4EQ=", "forward_to": ":1000" },
+        { "pubkey": "qKqIuUkQztLxY7Ounki8HXHcjy+S5AwAjTQvR77wf1E=", "forward_to": ":1001" },
+        { "pubkey": "WKn3Dtne0ZYj/BXa6uzqMVU+xrLIQRsPA/F/SkgFsVY=", "forward_to": "192.0.2.2:1002" },
+        { "forward_to": ":1003" }
+      ]
+    },
+    {
+      "privkey": "6GwcQf52eLIBckRygN+LaW3SfVpv4/Lc4kUyVkYfIkg=",
+      "address": "192.0.2.3",
+      "peers": [
+        { "pubkey": "eHXJlZTNeFf6J8z0qbFKth7RmtweAaWpFOKW4ACGSlc=", "forward_to": ":1000" },
+        { "forward_to": ":1001" }
+      ]
+    }
+  ]
+}
+

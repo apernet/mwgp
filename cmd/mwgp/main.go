@@ -10,7 +10,12 @@ import (
 	"os"
 )
 
+var (
+	MWGPVersion = "2.0.0"
+)
+
 func printUsage(w io.Writer) {
+	_, _ = fmt.Fprintf(w, "mwgp %s\n", MWGPVersion)
 	_, _ = fmt.Fprintf(w, "Usage: mwgp [server|client] config.json\n")
 }
 
@@ -42,7 +47,7 @@ func startClient(config []byte) (err error) {
 
 func main() {
 	for _, arg := range os.Args[1:] {
-		if arg == "-h" || arg == "--help" {
+		if arg == "-h" || arg == "--help" || arg == "--version" {
 			printUsage(os.Stdout)
 			os.Exit(0)
 		}
