@@ -53,7 +53,7 @@ forward rules for every WireGuard peering by client public key.
 
 As the proxy remembered how to forward with the Receiver of every data packet,
 the both side of communication would be able to talk with each other. 
-However, the proxy will fail if two clients choose a same name (Sender).
+However, the proxy will fail if two clients choose a same name (as the Sender).
 
 + Client1 -> Proxy: Hey there, I am Alice.
 + \*Proxy 
@@ -70,8 +70,8 @@ The possibility of this conflict is actually a [birthday problem][2].
 
 ## WireGuard Index Translation
 
-Thankfully the Sender and Receiver is not in the encrypted part (and it cannot
-be, as WireGuard itself need it to determine the session key to use).
+Thankfully the Sender and Receiver in the WireGuard protocol is not verified by
+the encrypted part.
 
 So the proxy may set the Sender (only need to re-compute the MAC of handshake
 packets, which requires the PublicKey of both side), and modify the Receiver of
