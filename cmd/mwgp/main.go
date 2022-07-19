@@ -6,7 +6,6 @@ import (
 	"github.com/haruue-net/mwgp"
 	"github.com/spf13/cobra"
 	"io/ioutil"
-	"os"
 )
 
 var (
@@ -22,11 +21,11 @@ var serverCmd = cobra.Command{
 	Use:   "server config.json",
 	Short: "Start a mwgp server",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		if len(os.Args) != 1 {
+		if len(args) != 1 {
 			err = fmt.Errorf("excepted 1 argument as config file")
 			return
 		}
-		configPath := os.Args[0]
+		configPath := args[0]
 		config, err := ioutil.ReadFile(configPath)
 		if err != nil {
 			return
@@ -44,11 +43,11 @@ var clientCmd = cobra.Command{
 	Short:   "Start a mwgp client",
 	Example: "mwgp client config.json",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		if len(os.Args) != 1 {
+		if len(args) != 1 {
 			err = fmt.Errorf("excepted 1 argument as config file")
 			return
 		}
-		configPath := os.Args[0]
+		configPath := args[0]
 		config, err := ioutil.ReadFile(configPath)
 		if err != nil {
 			return
