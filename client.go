@@ -38,6 +38,7 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 	}
 
 	client := Client{}
+	client.server = config.Server
 	client.wgitTable = NewWireGuardIndexTranslationTable()
 	client.wgitTable.ClientListen, err = net.ResolveUDPAddr("udp", config.Listen)
 	if err != nil {
