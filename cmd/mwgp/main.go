@@ -29,13 +29,9 @@ var serverCmd = cobra.Command{
 			err = fmt.Errorf("excepted 1 argument as config file")
 			return
 		}
-		configPath := args[0]
-		config, err := ioutil.ReadFile(configPath)
-		if err != nil {
-			return
-		}
-		err = startServer(config)
-		if err != nil {
+		serr := startServer(args[0])
+		if serr != nil {
+			log.Fatalf("[fatal] cannot start server: %s\n", serr.Error())
 			return
 		}
 		return
@@ -51,13 +47,9 @@ var clientCmd = cobra.Command{
 			err = fmt.Errorf("excepted 1 argument as config file")
 			return
 		}
-		configPath := args[0]
-		config, err := ioutil.ReadFile(configPath)
-		if err != nil {
-			return
-		}
-		err = startClient(config)
-		if err != nil {
+		serr := startClient(args[0])
+		if serr != nil {
+			log.Fatalf("[fatal] cannot start client: %s\n", serr.Error())
 			return
 		}
 		return
@@ -113,7 +105,11 @@ func init() {
 	viper.AutomaticEnv()
 }
 
-func startServer(config []byte) (err error) {
+func startServer(configPath string) (err error) {
+	config, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return
+	}
 	serverConfig := mwgp.ServerConfig{}
 	err = json.Unmarshal(config, &serverConfig)
 	if err != nil {
@@ -127,7 +123,11 @@ func startServer(config []byte) (err error) {
 	return server.Start()
 }
 
-func startClient(config []byte) (err error) {
+func startClient(configPath string) (err error) {
+	config, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return
+	}
 	clientConfig := mwgp.ClientConfig{}
 	err = json.Unmarshal(config, &clientConfig)
 	if err != nil {
@@ -142,5 +142,8 @@ func startClient(config []byte) (err error) {
 }
 
 func main() {
-	_ = rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err != nil {
+		os.Exit(22)
+	}
 }
