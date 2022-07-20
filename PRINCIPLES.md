@@ -101,7 +101,8 @@ index conflict may occur for both side.
 mwgp needs public key in the handshake initiation to match the forward destination.
 So if a mwgp server restarted (purged the whole forward table), all WireGuard
 packet data will be dropped immediately until the client send another handshake initiation.
-In the testing, this would interrupt the whole WireGuard connection for 10 seconds to 2 minutes.
+In the testing, this would interrupt the whole WireGuard connection for 10 seconds to 2 minutes
+(this issue has been solved by forward table disk cache).
 
 mwgp can only decrypt the handshake initiation, without the session key, we
 cannot decrypt or validate any further data packet. This means when mwgp got a
