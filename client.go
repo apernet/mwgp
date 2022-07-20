@@ -72,8 +72,12 @@ func (c *Client) Start() (err error) {
 				time.Sleep(10 * time.Second)
 				continue
 			}
-			c.cachedServerPeer.forwardToAddress = sa
-			c.wgitTable.UpdateAllServerDestinationChan <- sa
+			if c.cachedServerPeer.forwardToAddress == nil ||
+				!c.cachedServerPeer.forwardToAddress.IP.Equal(sa.IP) ||
+				c.cachedServerPeer.forwardToAddress.Port != sa.Port {
+				c.cachedServerPeer.forwardToAddress = sa
+				c.wgitTable.UpdateAllServerDestinationChan <- sa
+			}
 			time.Sleep(5 * time.Minute)
 		}
 	}()
