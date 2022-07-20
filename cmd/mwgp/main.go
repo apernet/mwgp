@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	MWGPVersion = "2.0.0"
+	MWGPVersion = "Unknown"
 )
 
 var rootCmd = cobra.Command{
