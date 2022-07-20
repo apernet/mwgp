@@ -41,10 +41,12 @@ type Peer struct {
 	// the cookie generator initialized with the server public key
 	// used to generate mac{1,2} for MessageInitialize(c->s)
 	clientCookieGenerator device.CookieGenerator
+	clientPublicKey       NoisePublicKey
 
 	// the cookie generator initialized with the client public key
 	// used to generate mac{1,2} for MessageResponse(s->c)
 	serverCookieGenerator device.CookieGenerator
+	serverPublicKey       NoisePublicKey
 
 	clientDestination *net.UDPAddr
 	serverDestination *net.UDPAddr
@@ -77,6 +79,7 @@ type WireGuardIndexTranslationTable struct {
 
 	Timeout         time.Duration
 	ExtractPeerFunc func(msg *device.MessageInitiation) (fi *ServerConfigPeer, err error)
+	CacheJar        WGITCacheJar
 
 	// clientProxyIndex -> Peer
 	clientMap map[uint32]*Peer
@@ -132,6 +135,11 @@ func NewWireGuardIndexTranslationTable() (table *WireGuardIndexTranslationTable)
 }
 
 func (t *WireGuardIndexTranslationTable) Serve() (err error) {
+	cerr := t.CacheJar.LoadLocked(t.serverMap, t.clientMap)
+	if cerr != nil {
+		log.Printf("[warn] forward table cache not loaded: %s\n", cerr.Error())
+	}
+
 	t.clientConn, err = net.ListenUDP("udp", t.ClientListen)
 	if err != nil {
 		err = fmt.Errorf("failed to listen on client addr %s: %w", t.ClientListen, err)
@@ -344,7 +352,9 @@ func (t *WireGuardIndexTranslationTable) processClientMessageInitiation(src *net
 
 	peer = &Peer{}
 
+	peer.clientPublicKey = *sp.ClientPublicKey
 	peer.clientCookieGenerator.Init(sp.serverPublicKey.NoisePublicKey)
+	peer.serverPublicKey = sp.serverPublicKey
 	peer.serverCookieGenerator.Init(sp.ClientPublicKey.NoisePublicKey)
 
 	peer.clientOriginIndex = msg.Sender
@@ -389,6 +399,9 @@ func (t *WireGuardIndexTranslationTable) processServerMessageResponse(src *net.U
 		log.Printf("[info] received message response from server, peer create stage #2: %s(idx:%08x->%08x) <=> %s(idx:%08x->%08x)\n",
 			peer.clientDestination.String(), peer.clientOriginIndex, peer.clientProxyIndex,
 			peer.serverDestination.String(), peer.serverOriginIndex, peer.serverProxyIndex)
+
+		go t.persistForwardTableCache()
+
 		return
 	}
 
@@ -533,6 +546,10 @@ func (t *WireGuardIndexTranslationTable) generateProxyIndexLocked(m map[uint32]*
 }
 
 func (t *WireGuardIndexTranslationTable) handlePeersExpireCheck(current time.Time) {
+	defer func() {
+		go t.persistForwardTableCache()
+	}()
+
 	t.mapLock.Lock()
 	defer t.mapLock.Unlock()
 
@@ -548,10 +565,24 @@ func (t *WireGuardIndexTranslationTable) handlePeersExpireCheck(current time.Tim
 }
 
 func (t *WireGuardIndexTranslationTable) handleAllServerDestinationUpdate(addr *net.UDPAddr) {
+	defer func() {
+		go t.persistForwardTableCache()
+	}()
+
 	t.mapLock.Lock()
 	defer t.mapLock.Unlock()
 
 	for _, peer := range t.clientMap {
 		peer.serverDestination = addr
+	}
+}
+
+func (t *WireGuardIndexTranslationTable) persistForwardTableCache() {
+	t.mapLock.RLock()
+	defer t.mapLock.RUnlock()
+
+	err := t.CacheJar.SaveLocked(t.serverMap)
+	if err != nil {
+		log.Printf("[error] failed to save forward table cache: %s\n", err)
 	}
 }

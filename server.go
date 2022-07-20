@@ -127,6 +127,7 @@ type ServerConfig struct {
 	Listen  string                `json:"listen"`
 	Timeout int                   `json:"timeout"`
 	Servers []*ServerConfigServer `json:"servers"`
+	WGITCacheConfig
 }
 
 type Server struct {
@@ -158,6 +159,7 @@ func NewServerWithConfig(config *ServerConfig) (outServer *Server, err error) {
 	}
 	server.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
 	server.wgitTable.ExtractPeerFunc = server.extractPeer
+	server.wgitTable.CacheJar.WGITCacheConfig = config.WGITCacheConfig
 
 	outServer = &server
 	return

@@ -18,6 +18,7 @@ type ClientConfig struct {
 	ServerSourceValidateLevel int            `json:"ssvl,omitempty"`
 	ClientPublicKey           NoisePublicKey `json:"client_pubkey"`
 	ServerPublicKey           NoisePublicKey `json:"server_pubkey"`
+	WGITCacheConfig
 }
 
 type Client struct {
@@ -49,6 +50,7 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 	client.wgitTable.ExtractPeerFunc = client.generateServerPeer
 	client.cachedServerPeer.serverPublicKey = config.ServerPublicKey
 	client.cachedServerPeer.ClientPublicKey = &config.ClientPublicKey
+	client.wgitTable.CacheJar.WGITCacheConfig = config.WGITCacheConfig
 
 	outClient = &client
 	return
