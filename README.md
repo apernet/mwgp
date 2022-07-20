@@ -76,7 +76,7 @@ address resolution, and WireGuard traffic obfuscation (coming soon).
   "timeout": 60, // Timeout before a forward entry expired
   "server_pubkey": "S6hPS4iuvUKmnH3fp1TssT95XsHY3E3L4hqMZ68TknA=", // The WireGuard public key of WireGuard server, to compute the MAC in the handshake messages. 
   "client_pubkey": "mCXTsTRyjQKV74eWR2Ka1LIdIptCG9K0FXlrG2NC4EQ=", // The WireGuard public key of WireGuard client, to compute the MAC in the handshake messages. 
-  "dns": "8.8.8.8" // the DNS server used to resolve the server address
+  "dns": "8.8.8.8:53" // the DNS server used to resolve the server address
 }
 ```
 
