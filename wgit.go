@@ -64,18 +64,18 @@ type WireGuardIndexTranslationTable struct {
 	// client <-> us
 	clientConn            *net.UDPConn
 	ClientListen          *net.UDPAddr
-	ClientReadFromUDPFunc func(conn *net.UDPConn) (packet *PacketWithSource, err error)
-	ClientWriteToUDPFunc  func(conn *net.UDPConn, packet PacketWithDestination) (err error)
-	clientReadChan        chan *PacketWithSource
-	clientWriteChan       chan *PacketWithDestination
+	ClientReadFromUDPFunc func(conn *net.UDPConn, packet *Packet) (err error)
+	ClientWriteToUDPFunc  func(conn *net.UDPConn, packet *Packet) (err error)
+	clientReadChan        chan *Packet
+	clientWriteChan       chan *Packet
 
 	// us <-> server
 	serverConn            *net.UDPConn
 	ServerListen          *net.UDPAddr
-	ServerReadFromUDPFunc func(conn *net.UDPConn) (packet *PacketWithSource, err error)
-	ServerWriteToUDPFunc  func(conn *net.UDPConn, packet PacketWithDestination) (err error)
-	serverReadChan        chan *PacketWithSource
-	serverWriteChan       chan *PacketWithDestination
+	ServerReadFromUDPFunc func(conn *net.UDPConn, packet *Packet) (err error)
+	ServerWriteToUDPFunc  func(conn *net.UDPConn, packet *Packet) (err error)
+	serverReadChan        chan *Packet
+	serverWriteChan       chan *Packet
 
 	Timeout         time.Duration
 	ExtractPeerFunc func(msg *device.MessageInitiation) (fi *ServerConfigPeer, err error)
@@ -89,30 +89,23 @@ type WireGuardIndexTranslationTable struct {
 
 	mapLock    sync.RWMutex
 	expireChan <-chan time.Time
+	packetPool sync.Pool
 
 	// UpdateAllServerDestinationChan is used to set all server address for mwgp-client (in case of DNS update).
 	// this channel is not intended to be used by mwgp-server.
 	UpdateAllServerDestinationChan chan *net.UDPAddr
 }
 
-func defaultReadFromUDPFunc(conn *net.UDPConn) (packet *PacketWithSource, err error) {
-	var n int
-	var b [device.MaxMessageSize]byte
-	var addr *net.UDPAddr
-	n, addr, err = conn.ReadFromUDP(b[:])
+func defaultReadFromUDPFunc(conn *net.UDPConn, packet *Packet) (err error) {
+	packet.Length, packet.Source, err = conn.ReadFromUDP(packet.Data[:])
 	if err != nil {
 		return
-	}
-	p := Packet(b[:n])
-	packet = &PacketWithSource{
-		Packet: p,
-		Source: addr,
 	}
 	return
 }
 
-func defaultWriteToUDPFunc(conn *net.UDPConn, packet PacketWithDestination) (err error) {
-	_, err = conn.WriteToUDP(packet.Packet, packet.Destination)
+func defaultWriteToUDPFunc(conn *net.UDPConn, packet *Packet) (err error) {
+	_, err = conn.WriteToUDP(packet.Slice(), packet.Destination)
 	return
 }
 
@@ -122,14 +115,17 @@ func NewWireGuardIndexTranslationTable() (table *WireGuardIndexTranslationTable)
 		ServerReadFromUDPFunc:          defaultReadFromUDPFunc,
 		ClientWriteToUDPFunc:           defaultWriteToUDPFunc,
 		ServerWriteToUDPFunc:           defaultWriteToUDPFunc,
-		clientReadChan:                 make(chan *PacketWithSource, 64),
-		clientWriteChan:                make(chan *PacketWithDestination, 64),
-		serverReadChan:                 make(chan *PacketWithSource, 64),
-		serverWriteChan:                make(chan *PacketWithDestination, 64),
+		clientReadChan:                 make(chan *Packet, 64),
+		clientWriteChan:                make(chan *Packet, 64),
+		serverReadChan:                 make(chan *Packet, 64),
+		serverWriteChan:                make(chan *Packet, 64),
 		Timeout:                        60 * time.Second,
 		clientMap:                      make(map[uint32]*Peer),
 		serverMap:                      make(map[uint32]*Peer),
 		UpdateAllServerDestinationChan: make(chan *net.UDPAddr),
+	}
+	table.packetPool.New = func() interface{} {
+		return &Packet{}
 	}
 	return
 }
@@ -160,9 +156,11 @@ func (t *WireGuardIndexTranslationTable) Serve() (err error) {
 
 func (t *WireGuardIndexTranslationTable) clientReadLoop() {
 	for {
-		packet, err := t.ClientReadFromUDPFunc(t.clientConn)
+		packet := t.obtainPacket()
+		err := t.ClientReadFromUDPFunc(t.clientConn, packet)
 		if err != nil {
 			log.Printf("[error] failed to read from client conn: %s\n", err.Error())
+			t.recyclePacket(packet)
 			continue
 		}
 		t.clientReadChan <- packet
@@ -171,9 +169,11 @@ func (t *WireGuardIndexTranslationTable) clientReadLoop() {
 
 func (t *WireGuardIndexTranslationTable) serverReadLoop() {
 	for {
-		packet, err := t.ServerReadFromUDPFunc(t.serverConn)
+		packet := t.obtainPacket()
+		err := t.ServerReadFromUDPFunc(t.serverConn, packet)
 		if err != nil {
 			log.Printf("[error] failed to read from server conn: %s\n", err.Error())
+			t.recyclePacket(packet)
 			continue
 		}
 		t.serverReadChan <- packet
@@ -184,17 +184,17 @@ func (t *WireGuardIndexTranslationTable) writeLoop() {
 	for {
 		select {
 		case packet := <-t.clientWriteChan:
-			err := t.ClientWriteToUDPFunc(t.clientConn, *packet)
+			err := t.ClientWriteToUDPFunc(t.clientConn, packet)
 			if err != nil {
 				log.Printf("[error] failed to write to client conn dest=%s: %s\n", packet.Destination.String(), err.Error())
-				continue
 			}
+			t.recyclePacket(packet)
 		case packet := <-t.serverWriteChan:
-			err := t.ServerWriteToUDPFunc(t.serverConn, *packet)
+			err := t.ServerWriteToUDPFunc(t.serverConn, packet)
 			if err != nil {
 				log.Printf("[error] failed to write to server conn dest=%s: %s\n", packet.Destination.String(), err.Error())
-				continue
 			}
+			t.recyclePacket(packet)
 		}
 	}
 }
@@ -222,13 +222,20 @@ func (t *WireGuardIndexTranslationTable) mainLoop() {
 	}
 }
 
-func (t *WireGuardIndexTranslationTable) handleClientPacket(packet *PacketWithSource) {
+func (t *WireGuardIndexTranslationTable) handleClientPacket(packet *Packet) {
+	packetForwarded := false
+	defer func() {
+		if !packetForwarded {
+			t.recyclePacket(packet)
+		}
+	}()
+
 	var err error
 	var peer *Peer
 	switch packet.MessageType() {
 	case device.MessageInitiationType:
 		var msg device.MessageInitiation
-		reader := bytes.NewReader(packet.Packet)
+		reader := bytes.NewReader(packet.Slice())
 		err = binary.Read(reader, binary.LittleEndian, &msg)
 		if err != nil {
 			break
@@ -263,20 +270,26 @@ func (t *WireGuardIndexTranslationTable) handleClientPacket(packet *PacketWithSo
 		log.Printf("[error] failed to patch type %d packet from client %s: %s\n", packet.MessageType(), packet.Source.String(), err.Error())
 		return
 	}
-	dp := &PacketWithDestination{
-		Packet:      packet.Packet,
-		Destination: peer.serverDestination,
-	}
-	t.serverWriteChan <- dp
+
+	packet.Destination = peer.serverDestination
+	t.serverWriteChan <- packet
+	packetForwarded = true
 }
 
-func (t *WireGuardIndexTranslationTable) handleServerPacket(packet *PacketWithSource) {
+func (t *WireGuardIndexTranslationTable) handleServerPacket(packet *Packet) {
+	packetForwarded := false
+	defer func() {
+		if !packetForwarded {
+			t.recyclePacket(packet)
+		}
+	}()
+
 	var err error
 	var peer *Peer
 	switch packet.MessageType() {
 	case device.MessageResponseType:
 		var msg device.MessageResponse
-		reader := bytes.NewReader(packet.Packet)
+		reader := bytes.NewReader(packet.Slice())
 		err = binary.Read(reader, binary.LittleEndian, &msg)
 		if err != nil {
 			break
@@ -287,7 +300,7 @@ func (t *WireGuardIndexTranslationTable) handleServerPacket(packet *PacketWithSo
 		}
 	case device.MessageCookieReplyType:
 		var msg device.MessageCookieReply
-		reader := bytes.NewReader(packet.Packet)
+		reader := bytes.NewReader(packet.Slice())
 		err = binary.Read(reader, binary.LittleEndian, &msg)
 		if err != nil {
 			break
@@ -332,11 +345,10 @@ func (t *WireGuardIndexTranslationTable) handleServerPacket(packet *PacketWithSo
 		log.Printf("[error] failed to patch type %d packet from server %s: %s\n", packet.MessageType(), packet.Source.String(), err.Error())
 		return
 	}
-	dp := &PacketWithDestination{
-		Packet:      packet.Packet,
-		Destination: peer.clientDestination,
-	}
-	t.clientWriteChan <- dp
+
+	packet.Destination = peer.clientDestination
+	t.clientWriteChan <- packet
+	packetForwarded = true
 }
 
 func (t *WireGuardIndexTranslationTable) processClientMessageInitiation(src *net.UDPAddr, msg *device.MessageInitiation) (peer *Peer, err error) {
@@ -433,7 +445,7 @@ func (t *WireGuardIndexTranslationTable) processServerMessageCookieReply(src *ne
 	return
 }
 
-func (t *WireGuardIndexTranslationTable) processMessageTransport(packet *PacketWithSource, s2c bool) (peer *Peer, err error) {
+func (t *WireGuardIndexTranslationTable) processMessageTransport(packet *Packet, s2c bool) (peer *Peer, err error) {
 	// we cannot decrypt MessageTransport,
 	// but their receiver_index has the same offset and that is the only information we need
 	receiverIndex, err := packet.ReceiverIndex()
@@ -585,4 +597,13 @@ func (t *WireGuardIndexTranslationTable) persistForwardTableCache() {
 	if err != nil {
 		log.Printf("[error] failed to save forward table cache: %s\n", err)
 	}
+}
+
+func (t *WireGuardIndexTranslationTable) obtainPacket() *Packet {
+	return t.packetPool.Get().(*Packet)
+}
+
+func (t *WireGuardIndexTranslationTable) recyclePacket(packet *Packet) {
+	packet.Reset()
+	t.packetPool.Put(packet)
 }

@@ -7,13 +7,33 @@ import (
 	"net"
 )
 
-type Packet []byte
+const (
+	kMTU = 1500
+)
+
+type Packet struct {
+	Data        [kMTU]byte
+	Length      int
+	Source      *net.UDPAddr
+	Destination *net.UDPAddr
+}
+
+func (p *Packet) Reset() {
+	//p.Data = [kMTU]byte{}
+	p.Length = 0
+	p.Source = nil
+	p.Destination = nil
+}
+
+func (p *Packet) Slice() []byte {
+	return p.Data[:p.Length]
+}
 
 func (p *Packet) MessageType() int {
-	if len(*p) < 1 {
+	if p.Length < 1 {
 		return -1
 	}
-	return int((*p)[0])
+	return int((p.Data)[0])
 }
 
 func (p *Packet) ReceiverIndex() (index uint32, err error) {
@@ -64,33 +84,23 @@ func (p *Packet) SetReceiverIndex(index uint32) (err error) {
 }
 
 func (p *Packet) getLEUint32Offset(bytesOffset int) (value uint32, err error) {
-	if len(*p) < bytesOffset+4 {
+	if p.Length < bytesOffset+4 {
 		err = fmt.Errorf("packet is too short to get uint32 at offset %d", bytesOffset)
 		return
 	}
-	value = binary.LittleEndian.Uint32((*p)[bytesOffset:])
+	value = binary.LittleEndian.Uint32(p.Data[bytesOffset:])
 	return
 }
 
 func (p *Packet) putLEUint32Offset(bytesOffset int, value uint32) (err error) {
-	if len(*p) < bytesOffset+4 {
+	if p.Length < bytesOffset+4 {
 		err = fmt.Errorf("packet is too short to put uint32 at offset %d", bytesOffset)
 		return
 	}
-	binary.LittleEndian.PutUint32((*p)[bytesOffset:], value)
+	binary.LittleEndian.PutUint32(p.Data[bytesOffset:], value)
 	return
 }
 
 func (p *Packet) FixMACs(cg *device.CookieGenerator) {
-	cg.AddMacs(*p)
-}
-
-type PacketWithSource struct {
-	Packet
-	Source *net.UDPAddr
-}
-
-type PacketWithDestination struct {
-	Packet
-	Destination *net.UDPAddr
+	cg.AddMacs(p.Slice())
 }
