@@ -2,8 +2,8 @@ package mwgp_test
 
 import (
 	_ "embed"
-	"encoding/json"
 	"github.com/haruue-net/mwgp"
+	json "github.com/yosuke-furukawa/json5/encoding/json5"
 	"testing"
 )
 

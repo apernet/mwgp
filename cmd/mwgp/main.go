@@ -1,11 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/haruue-net/mwgp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	json "github.com/yosuke-furukawa/json5/encoding/json5"
 	"io/ioutil"
 	"log"
 	"os"

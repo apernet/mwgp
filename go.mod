@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
+	github.com/yosuke-furukawa/json5 v0.1.1
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
 	golang.zx2c4.com/wireguard v0.0.0-20220317033214-ee1c8e0e8789
 )
