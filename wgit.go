@@ -412,7 +412,11 @@ func (t *WireGuardIndexTranslationTable) processServerMessageCookieReply(src *ne
 		return
 	}
 
-	peer.clientCookieGenerator.ConsumeReply(msg)
+	ok = peer.clientCookieGenerator.ConsumeReply(msg)
+	if !ok {
+		err = fmt.Errorf("failed to consume cookie reply from server %s", src.String())
+		return
+	}
 	return
 }
 
