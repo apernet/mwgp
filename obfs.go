@@ -39,7 +39,8 @@ import (
 // B.7. Deobfuscate the rest data.
 //
 // C. Modified XXHASH64
-// C.1. Modified XXHASH64 is a patched XXHASH64 function which never returns all zero for first 4-bytes of output.
+// C.1. Modified XXHASH64 is a patched XXHASH64 function which never returns [0,0,0,0] or [0,1,0,0] for first 4-bytes of output.
+//      So the packets of original WireGuard protocol can be distinguished from obfuscated packets.
 
 const (
 	kObfuscateRandomSuffixMaxLength  = 384
@@ -216,8 +217,12 @@ func (d *ModifiedXXHashDigest) Sum(b []byte) []byte {
 
 func (d *ModifiedXXHashDigest) Sum64() uint64 {
 	result := d.Digest.Sum64()
-	if result&0xFFFF_FFFF_0000_0000 == 0 {
+	high32 := uint32(result >> 32)
+	if high32&0xFFFF_FFFF == 0 {
 		result |= 0xD769_F4C2_0000_0000
+	}
+	if high32&0xFFFF_FFFF == 0x0001_0000 {
+		result |= 0x2817_30EF_0000_0000
 	}
 	return result
 }
