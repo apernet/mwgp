@@ -5,7 +5,7 @@ grt() {
 }
 
 version_dirty() {
-  git diff --quiet || echo '-dirty'
+  git diff HEAD --quiet || echo '-dirty'
 }
 
 version() {
