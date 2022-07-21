@@ -15,25 +15,37 @@ import (
 // Design:
 //
 // A. Obfuscate
-// A.1. For messages with type of MessageInitialize, MessageResponse, MessageCookieReply,
-//      and MessageTransport with length < 256,
-//      we generate a 16-byte random nonce, and attach it to the end of message.
-// A.2. For messages with type of MessageTransport with length >= 256,
-//      we use the final 16-byte of the message as the nonce,
+// A.1. For messages with type of MessageInitiation, MessageResponse, and MessageCookieReply,
+//      as they have fixed message length, we add a random suffix to the message.
+//      For messages with type of MessageTransport with length < 256,
+//      we generate a 16-byte random bytes, attach it to the end of message,
 //      and set packet[1] to 0x01.
+// A.2. Use the end 16-bytes of message as nonce to obfuscate the message.
 // A.3. Generate the XOR patterns with MODIFIED_XXHASH64(NONCE+N*USERKEYHASH),
 //      where (N-1) is the index of 8-bytes in the packet data.
 // A.4. Obfuscate the packet data with XOR patterns.
+//      For MessageInitiation, MessageResponse, and MessageCookieReply, we only obfuscate their origin length.
+//      For MessageTransport, we only obfuscate the first 16-bytes.
 //
 // B. Deobfuscate
 // B.1. Check the first 4-bytes of packet data, if it is already a valid WireGuard packet, skip the following steps.
 // B.2. Use the tail 16-bytes of packet data as the nonce.
 // B.3. Generate the XOR patterns with the same method in the A.3.
-// B.4. Deobfuscate the packet data with XOR patterns.
-// B.5. Check the packet[1], if it is 0x01, set it to 0, otherwise minus 16-bytes from its length.
+// B.4. Deobfuscate the first 8-bytes of the packet to find out its message type.
+// B.5. For messages with type of MessageInitiation, MessageResponse, and MessageCookieReply,
+//      set the packet length to its fixed message length, drop the rest data.
+// B.6. For messages with type of MessageTransport, Check the packet[1],
+//      if it is 0x01, set it to 0, and minus 16-bytes from its length.
+// B.7. Deobfuscate the rest data.
 //
 // C. Modified XXHASH64
 // C.1. Modified XXHASH64 is a patched XXHASH64 function which never returns all zero for first 4-bytes of output.
+
+const (
+	kObfuscateRandomSuffixMaxLength  = 384
+	kObfuscateSuffixAsNonceMinLength = 256
+	kObfuscateNonceLength            = 16
+)
 
 type WireGuardObfuscator struct {
 	enabled     bool
@@ -59,28 +71,47 @@ func (o *WireGuardObfuscator) Obfuscate(packet *Packet) {
 	if packet.Flags&PacketFlagObfuscateBeforeSend == 0 {
 		return
 	}
+
 	messageType := packet.MessageType()
-	var useExtendedNonce bool
+	var obfsPartLength int
 	switch messageType {
 	case device.MessageInitiationType:
-		fallthrough
+		packet.Length = device.MessageInitiationSize + kObfuscateNonceLength + rand.Int()%kObfuscateRandomSuffixMaxLength
+		_, _ = rand.Read(packet.Data[device.MessageInitiationSize:packet.Length])
+		obfsPartLength = device.MessageInitiationSize
 	case device.MessageResponseType:
-		fallthrough
+		packet.Length = device.MessageResponseSize + kObfuscateNonceLength + rand.Int()%kObfuscateRandomSuffixMaxLength
+		_, _ = rand.Read(packet.Data[device.MessageResponseSize:packet.Length])
+		obfsPartLength = device.MessageResponseSize
 	case device.MessageCookieReplyType:
-		useExtendedNonce = true
+		packet.Length = device.MessageCookieReplySize + kObfuscateNonceLength + rand.Int()%kObfuscateRandomSuffixMaxLength
+		_, _ = rand.Read(packet.Data[device.MessageCookieReplySize:packet.Length])
+		obfsPartLength = device.MessageCookieReplySize
 	case device.MessageTransportType:
-		useExtendedNonce = packet.Length < 256
+		obfsPartLength = device.MessageTransportHeaderSize
+		if packet.Length < kObfuscateSuffixAsNonceMinLength {
+			packet.Data[1] = 0x01
+			packet.Length += kObfuscateNonceLength
+			_, _ = rand.Read(packet.Data[packet.Length-kObfuscateNonceLength : packet.Length])
+		}
+	default:
+		return
 	}
-	var nonce [16]byte
-	if useExtendedNonce {
-		_, _ = rand.Read(nonce[:])
-		copy(packet.Data[packet.Length:], nonce[:])
-		packet.Length += 16
-	} else {
-		copy(nonce[:], packet.Data[packet.Length-16:])
-		packet.Data[1] = 0x01
+
+	var nonce [kObfuscateNonceLength]byte
+	copy(nonce[:], packet.Data[packet.Length-kObfuscateNonceLength:])
+
+	var digest ModifiedXXHashDigest
+	digest.Reset()
+	_, _ = digest.Write(nonce[:])
+	for i := 0; i < obfsPartLength; i += 8 {
+		_, _ = digest.Write(o.userKeyHash[:])
+		var xorKey [8]byte
+		digest.Sum(xorKey[:0])
+		for j := i; j < i+8 && j < obfsPartLength; j++ {
+			packet.Data[j] ^= xorKey[j-i]
+		}
 	}
-	o.processWithNonce(packet, nonce[:])
 }
 
 func (o *WireGuardObfuscator) Deobfuscate(packet *Packet) {
@@ -96,32 +127,54 @@ func (o *WireGuardObfuscator) Deobfuscate(packet *Packet) {
 		return
 	}
 
-	var nonce [16]byte
-	copy(nonce[:], packet.Data[packet.Length-16:])
+	var nonce [kObfuscateNonceLength]byte
+	copy(nonce[:], packet.Data[packet.Length-kObfuscateNonceLength:])
 
-	o.processWithNonce(packet, nonce[:])
-
-	if packet.Data[1] == 0x01 {
-		packet.Data[1] = 0
-	} else {
-		packet.Length -= 16
-	}
-
-	packet.Flags |= PacketFlagDeobfuscatedAfterReceived
-}
-
-func (o *WireGuardObfuscator) processWithNonce(packet *Packet, nonce []byte) {
 	var digest ModifiedXXHashDigest
 	digest.Reset()
-	_, _ = digest.Write(nonce)
-	for i := 0; i < packet.Length-16; i += 8 {
+	_, _ = digest.Write(nonce[:])
+
+	// decode first 8 bytes for message type
+	_, _ = digest.Write(o.userKeyHash[:])
+	var xorKey [8]byte
+	digest.Sum(xorKey[:0])
+	for i := 0; i < 8; i++ {
+		packet.Data[i] ^= xorKey[i]
+	}
+
+	messageType := packet.MessageType()
+	var obfsPartLength int
+	switch messageType {
+	case device.MessageInitiationType:
+		obfsPartLength = device.MessageInitiationSize
+		packet.Length = device.MessageInitiationSize
+	case device.MessageResponseType:
+		obfsPartLength = device.MessageResponseSize
+		packet.Length = device.MessageResponseSize
+	case device.MessageCookieReplyType:
+		obfsPartLength = device.MessageCookieReplySize
+		packet.Length = device.MessageCookieReplySize
+	case device.MessageTransportType:
+		obfsPartLength = device.MessageTransportHeaderSize
+		if packet.Data[1] == 0x01 {
+			packet.Data[1] = 0
+			packet.Length -= kObfuscateNonceLength
+		}
+	default:
+		// wtf?
+		return
+	}
+
+	// decode the rest
+	for i := 8; i < obfsPartLength; i += 8 {
 		_, _ = digest.Write(o.userKeyHash[:])
-		var xorKey [8]byte
 		digest.Sum(xorKey[:0])
-		for j := i; j < i+8 && j < packet.Length-16; j++ {
+		for j := i; j < i+8 && j < obfsPartLength; j++ {
 			packet.Data[j] ^= xorKey[j-i]
 		}
 	}
+
+	packet.Flags |= PacketFlagDeobfuscatedAfterReceived
 }
 
 func (o *WireGuardObfuscator) WriteToUDPWithObfuscate(conn *net.UDPConn, packet *Packet) (err error) {

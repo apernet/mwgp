@@ -2,19 +2,30 @@ package mwgp
 
 import (
 	"crypto/rand"
+	"golang.zx2c4.com/wireguard/device"
 	"testing"
 )
 
 func TestWireGuardObfuscator_Obfuscate(t *testing.T) {
+	testObfuscate(t, device.MessageInitiationType, device.MessageInitiationSize)
+	testObfuscate(t, device.MessageResponseType, device.MessageResponseSize)
+	testObfuscate(t, device.MessageCookieReplyType, device.MessageCookieReplySize)
+	testObfuscate(t, device.MessageTransportType, device.MessageTransportSize)
+	testObfuscate(t, device.MessageTransportType, 101)
+	testObfuscate(t, device.MessageTransportType, 701)
+	testObfuscate(t, device.MessageTransportType, 1500)
+}
+
+func testObfuscate(t *testing.T, messageType byte, messageLength int) {
 	var obfuscator WireGuardObfuscator
 
 	obfuscator.Initialize("test")
 	var p Packet
-	p.Data[0] = 4
+	p.Data[0] = messageType
 	p.Data[1] = 0
 	p.Data[2] = 0
 	p.Data[3] = 0
-	p.Length = 141
+	p.Length = messageLength
 	_, _ = rand.Read(p.Data[4:p.Length])
 
 	t.Logf("origin packet: length=%d data=%v\n", p.Length, p.Data[:p.Length])
