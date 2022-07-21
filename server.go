@@ -124,9 +124,10 @@ func (s *ServerConfigServer) Initialize() (err error) {
 }
 
 type ServerConfig struct {
-	Listen  string                `json:"listen"`
-	Timeout int                   `json:"timeout"`
-	Servers []*ServerConfigServer `json:"servers"`
+	Listen       string                `json:"listen"`
+	Timeout      int                   `json:"timeout"`
+	Servers      []*ServerConfigServer `json:"servers"`
+	ObfuscateKey string                `json:"obfs"`
 	WGITCacheConfig
 }
 
@@ -160,6 +161,11 @@ func NewServerWithConfig(config *ServerConfig) (outServer *Server, err error) {
 	server.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
 	server.wgitTable.ExtractPeerFunc = server.extractPeer
 	server.wgitTable.CacheJar.WGITCacheConfig = config.WGITCacheConfig
+
+	var obfuscator WireGuardObfuscator
+	obfuscator.Initialize(config.ObfuscateKey)
+	server.wgitTable.ClientWriteToUDPFunc = obfuscator.WriteToUDPWithObfuscate
+	server.wgitTable.ClientReadFromUDPFunc = obfuscator.ReadFromUDPWithDeobfuscate
 
 	outServer = &server
 	return

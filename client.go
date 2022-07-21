@@ -18,6 +18,7 @@ type ClientConfig struct {
 	ServerSourceValidateLevel int            `json:"ssvl,omitempty"`
 	ClientPublicKey           NoisePublicKey `json:"client_pubkey"`
 	ServerPublicKey           NoisePublicKey `json:"server_pubkey"`
+	ObfuscateKey              string         `json:"obfs"`
 	WGITCacheConfig
 }
 
@@ -51,6 +52,14 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 	client.cachedServerPeer.serverPublicKey = config.ServerPublicKey
 	client.cachedServerPeer.ClientPublicKey = &config.ClientPublicKey
 	client.wgitTable.CacheJar.WGITCacheConfig = config.WGITCacheConfig
+
+	var obfuscator WireGuardObfuscator
+	obfuscator.Initialize(config.ObfuscateKey)
+	client.wgitTable.ServerWriteToUDPFunc = func(conn *net.UDPConn, packet *Packet) (err error) {
+		packet.Flags |= PacketFlagObfuscateBeforeSend
+		return obfuscator.WriteToUDPWithObfuscate(conn, packet)
+	}
+	client.wgitTable.ServerReadFromUDPFunc = obfuscator.ReadFromUDPWithDeobfuscate
 
 	outClient = &client
 	return

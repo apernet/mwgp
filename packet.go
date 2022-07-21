@@ -11,11 +11,17 @@ const (
 	kMTU = 1500
 )
 
+const (
+	PacketFlagDeobfuscatedAfterReceived = 1 << iota
+	PacketFlagObfuscateBeforeSend
+)
+
 type Packet struct {
 	Data        [kMTU]byte
 	Length      int
 	Source      *net.UDPAddr
 	Destination *net.UDPAddr
+	Flags       uint64
 }
 
 func (p *Packet) Reset() {
@@ -23,6 +29,7 @@ func (p *Packet) Reset() {
 	p.Length = 0
 	p.Source = nil
 	p.Destination = nil
+	p.Flags = 0
 }
 
 func (p *Packet) Slice() []byte {

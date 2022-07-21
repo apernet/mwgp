@@ -25,6 +25,7 @@ type WGITCachePeer struct {
 	ServerPublicKey           NoisePublicKey `json:"spk"`
 	ServerDestination         string         `json:"sdst"`
 	ServerSourceValidateLevel int            `json:"ssvl"`
+	ObfuscateEnabled          bool           `json:"obfe"`
 }
 
 func (cp *WGITCachePeer) FromWGITPeer(peer *Peer) (err error) {
@@ -41,6 +42,8 @@ func (cp *WGITCachePeer) FromWGITPeer(peer *Peer) (err error) {
 		cp.ServerDestination = peer.serverDestination.String()
 	}
 	cp.ServerSourceValidateLevel = peer.serverSourceValidateLevel
+
+	cp.ObfuscateEnabled = peer.obfuscateEnabled
 
 	return
 }
@@ -78,6 +81,8 @@ func (cp *WGITCachePeer) WGITPeer() (peer *Peer, err error) {
 	peer.serverCookieGenerator.Init(peer.serverPublicKey.NoisePublicKey)
 
 	peer.lastActive.Store(time.Now())
+
+	peer.obfuscateEnabled = cp.ObfuscateEnabled
 
 	return
 }

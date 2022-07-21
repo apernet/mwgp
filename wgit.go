@@ -54,6 +54,8 @@ type Peer struct {
 
 	clientSourceValidateLevel int
 	serverSourceValidateLevel int
+
+	obfuscateEnabled bool
 }
 
 func (p *Peer) IsServerReplied() bool {
@@ -106,6 +108,9 @@ func defaultReadFromUDPFunc(conn *net.UDPConn, packet *Packet) (err error) {
 
 func defaultWriteToUDPFunc(conn *net.UDPConn, packet *Packet) (err error) {
 	_, err = conn.WriteToUDP(packet.Slice(), packet.Destination)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -244,6 +249,11 @@ func (t *WireGuardIndexTranslationTable) handleClientPacket(packet *Packet) {
 		if err != nil {
 			break
 		}
+
+		// for mwgp-server only, mwgp-client won't match this since its client would be official WireGuard
+		if packet.Flags&PacketFlagDeobfuscatedAfterReceived != 0 {
+			peer.obfuscateEnabled = true
+		}
 	case device.MessageTransportType:
 		peer, err = t.processMessageTransport(packet, false)
 	default:
@@ -344,6 +354,11 @@ func (t *WireGuardIndexTranslationTable) handleServerPacket(packet *Packet) {
 	if err != nil {
 		log.Printf("[error] failed to patch type %d packet from server %s: %s\n", packet.MessageType(), packet.Source.String(), err.Error())
 		return
+	}
+
+	// for mwgp-server only
+	if peer.obfuscateEnabled {
+		packet.Flags |= PacketFlagObfuscateBeforeSend
 	}
 
 	packet.Destination = peer.clientDestination

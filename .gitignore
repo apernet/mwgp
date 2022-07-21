@@ -1,3 +1,5 @@
 /.idea
 *.exe
 /mwgp
+/mwgp.test
+/profile*.out
