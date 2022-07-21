@@ -67,7 +67,7 @@ An mwgp client is no longer required for mwgp v2, as you can directly connect
 to the mwgp endpoint with official WireGuard implementation.
 
 The client is kept for features like specifying the DNS server for server
-address resolution, and WireGuard traffic obfuscation (coming soon).
+address resolution, and WireGuard traffic obfuscation.
 
 ```json5
 {
