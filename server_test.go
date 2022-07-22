@@ -2,8 +2,9 @@ package mwgp_test
 
 import (
 	_ "embed"
+	"encoding/json"
+	"github.com/flynn/json5"
 	"github.com/haruue-net/mwgp"
-	json "github.com/yosuke-furukawa/json5/encoding/json5"
 	"testing"
 )
 
@@ -72,13 +73,13 @@ func TestServerConfigMarshal(t *testing.T) {
 	t.Log(string(bs))
 }
 
-//go:embed example.server.json
+//go:embed server.test.json
 var exampleServerConfig []byte
 
 func TestServerConfigUnmarshal(t *testing.T) {
 	var err error
 	var c mwgp.ServerConfig
-	err = json.Unmarshal(exampleServerConfig, &c)
+	err = json5.Unmarshal(exampleServerConfig, &c)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,35 @@
+// this config is intended to be a test of json5
+{ // begin
+  "listen": ":1000",  // Listen address
+  "timeout": 60,      // Timeout before a forwarding entry expired, in seconds
+  "servers": [ // begin
+    { // begin
+      "privkey": "EFt3ELmZeM/M47qFkgF4RbSOijtdHS43BNIxvxstREI=", // The private key of the WireGuard server, which is required to decrypt the handshake_initiation message for the public_key of the client
+      "address": "192.0.2.1", // The IP address of the WireGuard server, which would be combined with the peer."forward_to" for a completed UDP address
+      "peers": [
+        {
+          "pubkey": "mCXTsTRyjQKV74eWR2Ka1LIdIptCG9K0FXlrG2NC4EQ=", // The public key of the client who would be connected to the WireGuard interface listening on the "forward_to" address
+          "forward_to": ":1000" // The endpoint of the server WireGuard, will be combined with the server."address" if the IP address part gets omitted
+        },
+        {
+          "pubkey": "WKn3Dtne0ZYj/BXa6uzqMVU+xrLIQRsPA/F/SkgFsVY=",
+          "forward_to": "192.0.2.2:1002" // A complete UDP address will also be accepted, for forwarding to another host other than the server."address"
+        },
+        {
+          // If the "pubkey" is not specified, it will define a "fallback" peer which matches any unmatched public keys, this is useful for edge nodes
+          "forward_to": ":1003"
+        } // end
+      ], // end
+    }, // end
+    { // begin
+      // Servers with different private keys can be defined in one mwgp-server and share the listen port
+      "privkey": "6GwcQf52eLIBckRygN+LaW3SfVpv4/Lc4kUyVkYfIkg=",
+      "address": "192.0.2.3",
+      "peers": [ /*comments*/
+        { /*comments*/ "pubkey": "mCXTsTRyjQKV74eWR2Ka1LIdIptCG9K0FXlrG2NC4EQ=", "forward_to": ":1000" }, // comments
+        { "pubkey": "OPdP2G4hfQasp/+/AZ6LiHJXIY62UKQQY4iNHJVJwH4=", "forward_to": ":1001" }, // comments
+      ]
+    }
+  ],
+  "obfs": "kisekimo, mahoumo, muryoudewaarimasen" // Obfuscation password (optional)
+}

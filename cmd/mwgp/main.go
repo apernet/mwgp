@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	"github.com/flynn/json5"
 	"github.com/haruue-net/mwgp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	json "github.com/yosuke-furukawa/json5/encoding/json5"
 	"io/ioutil"
 	"log"
 	"os"
@@ -111,7 +111,7 @@ func startServer(configPath string) (err error) {
 		return
 	}
 	serverConfig := mwgp.ServerConfig{}
-	err = json.Unmarshal(config, &serverConfig)
+	err = json5.Unmarshal(config, &serverConfig)
 	if err != nil {
 		return
 	}
@@ -129,7 +129,7 @@ func startClient(configPath string) (err error) {
 		return
 	}
 	clientConfig := mwgp.ClientConfig{}
-	err = json.Unmarshal(config, &clientConfig)
+	err = json5.Unmarshal(config, &clientConfig)
 	if err != nil {
 		return
 	}
