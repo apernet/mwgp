@@ -10,42 +10,43 @@ import (
 )
 
 // Goal:
-// Fast obfuscation WireGuard Packet without overhead to MTU
+// Extreme fast obfuscation for WireGuard packets, without overhead to MTU and heap memory allocation.
 //
 // Design:
 //
 // A. Obfuscate
-// A.1a.For messages with type of MessageInitiation, MessageResponse, and MessageCookieReply,
-//      as they have fixed message length, we add a random suffix to the message.
-// A.1b.In additional, if the MessageInitiation.MAC2 and MessageResponse.MAC2 is all zero,
-//      fill it with random bytes and set packet[1] to 0x01.
-// A.1c.For messages with type of MessageTransport with length < 256,
-//      we generate a 16-byte random bytes, attach it to the end of message,
-//      and set packet[1] to 0x01.
-// A.2. Use the end 16-bytes of message as nonce to obfuscate the message.
-// A.3. Generate the XOR patterns with XXHASH64(NONCE+N*USERKEYHASH),
-//      where (N-1) is the index of 8-bytes in the packet data,
-//      but as for N=1, we use MODIFIED_XXHASH64() instead of XXHASH64()
-// A.4. Obfuscate the packet data with XOR patterns.
-//      For MessageInitiation, MessageResponse, and MessageCookieReply, we only obfuscate their origin length.
-//      For MessageTransport, we only obfuscate the first 16-bytes.
+// A.1a. MessageInitiation, MessageResponse, and MessageCookieReply have a fixed message length,
+//       we can pad those package with random bytes to randomize their length.
+// A.1b. In additional, to avoid KPA (Known Plaintext Attack) targeted to MAC2 (usually zeros),
+//       if MessageInitiation.MAC2 or MessageResponse.MAC2 are all zeros,
+//       fill it with random bytes, and set packet[1] to 0x01.
+// A.1c. As for MessageTransport with length < 256,
+//       we generate a 16-bytes random bytes (will be used as nonce), and attach it to the end of message,
+//       and set packet[1] to 0x01.
+// A.2.  Use the end 16-bytes of message as nonce to obfuscate the message.
+// A.3.  Generate the XOR patterns to obfuscate the packets with XXHASH64(NONCE+N*USERKEYHASH),
+//       where (N-1) is the index of 8-bytes in the packet data,
+//       but as for N=1, we use MODIFIED_XXHASH64() instead of XXHASH64()
+//       to make sure the header of obfuscated packets differ from the original WireGuard protocol.
+// A.4.  Obfuscate the packet data with XOR patterns.
+//       For MessageInitiation, MessageResponse, and MessageCookieReply, we only obfuscate their origin length.
+//       For MessageTransport, we only obfuscate the first 16-bytes.
 //
 // B. Deobfuscate
-// B.1. Check the first 4-bytes of packet data, if it is already a valid WireGuard packet, skip the following steps.
-// B.2. Use the tail 16-bytes of packet data as the nonce.
-// B.3. Generate the XOR patterns with the same method in the A.3.
-// B.4. Deobfuscate the first 8-bytes of the packet to find out its message type.
-// B.5. For messages with type of MessageInitiation, MessageResponse, and MessageCookieReply,
-//      set the packet length to its fixed message length, drop the rest data.
-// B.6. For messages with type of MessageTransport, Check the packet[1],
-//      if it is 0x01, set it to 0, and minus 16-bytes from its length.
-// B.7. Deobfuscate the rest data.
-// B.8. For message with type of MessageInitiation, MessageResponse, check the packet[1],
-//      if it is 0x01, set it to 0, and memset(MAC2, 0, MAC2_LEN)
+// B.1.  Check the first 4-bytes of packet data, if it is already a valid WireGuard packet, skip the following steps.
+// B.2.  Use the final 16-bytes of packet data as the nonce.
+// B.3.  Generate the XOR patterns with the same method in the A.3.
+// B.4.  Deobfuscate the first 8-bytes of the packet to find out its message type.
+// B.5a. As for MessageInitiation, MessageResponse, and MessageCookieReply,
+//       set the packet length to its fixed message length, drop the rest data.
+//       if its packet[1] is 0x01, set packet[1] to 0, and drop the MAC2.
+// B.5b. As for MessageTransport,
+//       if its packet[1] is 0x01, set packet[1] to 0, and reduce its length by 16 bytes.
+// B.6.  Deobfuscate the rest data.
 //
 // C. Modified XXHASH64
-// C.1. Modified XXHASH64 is a patched XXHASH64 function which must returns a pattern that changes original WireGuard protocol.
-//      So the packets of original WireGuard protocol can be distinguished from obfuscated packets.
+// C.1.  Modified XXHASH64 is a patched XXHASH64 function which must returns a pattern that changes original WireGuard protocol.
+//       So the packets of original WireGuard protocol can be distinguished from obfuscated packets.
 
 const (
 	kObfuscateRandomSuffixMaxLength  = 384
