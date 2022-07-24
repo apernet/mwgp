@@ -60,6 +60,9 @@ const (
 type WireGuardObfuscator struct {
 	enabled     bool
 	userKeyHash [sha256.Size]byte
+
+	ReadFromUDPFunc func(conn *net.UDPConn, packet *Packet) (err error)
+	WriteToUDPFunc  func(conn *net.UDPConn, packet *Packet) (err error)
 }
 
 func (o *WireGuardObfuscator) Initialize(userKey string) {
@@ -228,7 +231,10 @@ func (o *WireGuardObfuscator) Deobfuscate(packet *Packet) {
 
 func (o *WireGuardObfuscator) WriteToUDPWithObfuscate(conn *net.UDPConn, packet *Packet) (err error) {
 	o.Obfuscate(packet)
-	err = defaultWriteToUDPFunc(conn, packet)
+	if o.WriteToUDPFunc == nil {
+		o.WriteToUDPFunc = defaultWriteToUDPFunc
+	}
+	err = o.WriteToUDPFunc(conn, packet)
 	if err != nil {
 		return
 	}
@@ -236,7 +242,10 @@ func (o *WireGuardObfuscator) WriteToUDPWithObfuscate(conn *net.UDPConn, packet 
 }
 
 func (o *WireGuardObfuscator) ReadFromUDPWithDeobfuscate(conn *net.UDPConn, packet *Packet) (err error) {
-	err = defaultReadFromUDPFunc(conn, packet)
+	if o.ReadFromUDPFunc == nil {
+		o.ReadFromUDPFunc = defaultReadFromUDPFunc
+	}
+	err = o.ReadFromUDPFunc(conn, packet)
 	if err != nil {
 		return
 	}
