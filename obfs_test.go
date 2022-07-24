@@ -7,16 +7,17 @@ import (
 )
 
 func TestWireGuardObfuscator_Obfuscate(t *testing.T) {
-	testObfuscate(t, device.MessageInitiationType, device.MessageInitiationSize)
-	testObfuscate(t, device.MessageResponseType, device.MessageResponseSize)
-	testObfuscate(t, device.MessageCookieReplyType, device.MessageCookieReplySize)
-	testObfuscate(t, device.MessageTransportType, device.MessageTransportSize)
-	testObfuscate(t, device.MessageTransportType, 101)
-	testObfuscate(t, device.MessageTransportType, 701)
-	testObfuscate(t, device.MessageTransportType, 1500)
+	testObfuscate(t, device.MessageInitiationType, device.MessageInitiationSize, true)
+	testObfuscate(t, device.MessageInitiationType, device.MessageInitiationSize, false)
+	testObfuscate(t, device.MessageResponseType, device.MessageResponseSize, true)
+	testObfuscate(t, device.MessageResponseType, device.MessageResponseSize, false)
+	testObfuscate(t, device.MessageCookieReplyType, device.MessageCookieReplySize, false)
+	for i := device.MinMessageSize; i <= 1500; i++ {
+		testObfuscate(t, device.MessageTransportType, i, false)
+	}
 }
 
-func testObfuscate(t *testing.T, messageType byte, messageLength int) {
+func testObfuscate(t *testing.T, messageType byte, messageLength int, allZeroMAC2 bool) {
 	var obfuscator WireGuardObfuscator
 
 	obfuscator.Initialize("test")
@@ -28,14 +29,29 @@ func testObfuscate(t *testing.T, messageType byte, messageLength int) {
 	p.Length = messageLength
 	_, _ = rand.Read(p.Data[4:p.Length])
 
-	t.Logf("origin packet: length=%d data=%v\n", p.Length, p.Data[:p.Length])
+	if allZeroMAC2 {
+		switch messageType {
+		case device.MessageInitiationType:
+			mac2 := p.Data[kMessageInitiationTypeMAC2Offset:messageLength]
+			for i := range mac2 {
+				mac2[i] = 0
+			}
+		case device.MessageResponseType:
+			mac2 := p.Data[kMessageResponseTypeMAC2Offset:messageLength]
+			for i := range mac2 {
+				mac2[i] = 0
+			}
+		}
+	}
+
+	//t.Logf("origin packet: length=%d data=%v\n", p.Length, p.Data[:p.Length])
 
 	originPacket := p
 
 	p.Flags |= PacketFlagObfuscateBeforeSend
 	obfuscator.Obfuscate(&p)
 
-	t.Logf("obfuscated packet: length=%d data=%v\n", p.Length, p.Data[:p.Length])
+	//t.Logf("obfuscated packet: length=%d data=%v\n", p.Length, p.Data[:p.Length])
 
 	obfuscator.Deobfuscate(&p)
 
@@ -59,7 +75,7 @@ func testObfuscate(t *testing.T, messageType byte, messageLength int) {
 		t.Errorf("obfuscate/deobfuscate failed\n")
 	}
 
-	t.Logf("deobfuscated packet: length=%d data=%v\n", p.Length, p.Data[:p.Length])
+	//t.Logf("deobfuscated packet: length=%d data=%v\n", p.Length, p.Data[:p.Length])
 }
 
 func BenchmarkWireGuardObfuscator_Obfuscate(b *testing.B) {

@@ -15,9 +15,11 @@ import (
 // Design:
 //
 // A. Obfuscate
-// A.1. For messages with type of MessageInitiation, MessageResponse, and MessageCookieReply,
+// A.1a.For messages with type of MessageInitiation, MessageResponse, and MessageCookieReply,
 //      as they have fixed message length, we add a random suffix to the message.
-//      For messages with type of MessageTransport with length < 256,
+// A.1b.In additional, if the MessageInitiation.MAC2 and MessageResponse.MAC2 is all zero,
+//      fill it with random bytes and set packet[1] to 0x01.
+// A.1c.For messages with type of MessageTransport with length < 256,
 //      we generate a 16-byte random bytes, attach it to the end of message,
 //      and set packet[1] to 0x01.
 // A.2. Use the end 16-bytes of message as nonce to obfuscate the message.
@@ -37,6 +39,8 @@ import (
 // B.6. For messages with type of MessageTransport, Check the packet[1],
 //      if it is 0x01, set it to 0, and minus 16-bytes from its length.
 // B.7. Deobfuscate the rest data.
+// B.8. For message with type of MessageInitiation, MessageResponse, check the packet[1],
+//      if it is 0x01, set it to 0, and memset(MAC2, 0, MAC2_LEN)
 //
 // C. Modified XXHASH64
 // C.1. Modified XXHASH64 is a patched XXHASH64 function which must returns a pattern that changes original WireGuard protocol.
@@ -46,6 +50,9 @@ const (
 	kObfuscateRandomSuffixMaxLength  = 384
 	kObfuscateSuffixAsNonceMinLength = 256
 	kObfuscateNonceLength            = 16
+
+	kMessageInitiationTypeMAC2Offset = 132
+	kMessageResponseTypeMAC2Offset   = 76
 )
 
 type WireGuardObfuscator struct {
@@ -73,21 +80,40 @@ func (o *WireGuardObfuscator) Obfuscate(packet *Packet) {
 		return
 	}
 
+	isAllZero := func(b []byte) (result bool) {
+		result = true
+		for _, v := range b {
+			if v != 0 {
+				result = false
+				break
+			}
+		}
+		return
+	}
+
 	messageType := packet.MessageType()
 	var obfsPartLength int
 	switch messageType {
 	case device.MessageInitiationType:
 		packet.Length = device.MessageInitiationSize + kObfuscateNonceLength + rand.Int()%kObfuscateRandomSuffixMaxLength
-		_, _ = rand.Read(packet.Data[device.MessageInitiationSize:packet.Length])
 		obfsPartLength = device.MessageInitiationSize
+		if isAllZero(packet.Data[kMessageInitiationTypeMAC2Offset:device.MessageInitiationSize]) {
+			packet.Data[1] = 0x01
+			obfsPartLength = kMessageInitiationTypeMAC2Offset
+		}
+		_, _ = rand.Read(packet.Data[obfsPartLength:packet.Length])
 	case device.MessageResponseType:
 		packet.Length = device.MessageResponseSize + kObfuscateNonceLength + rand.Int()%kObfuscateRandomSuffixMaxLength
-		_, _ = rand.Read(packet.Data[device.MessageResponseSize:packet.Length])
 		obfsPartLength = device.MessageResponseSize
+		if isAllZero(packet.Data[kMessageResponseTypeMAC2Offset:device.MessageResponseSize]) {
+			packet.Data[1] = 0x01
+			obfsPartLength = kMessageResponseTypeMAC2Offset
+		}
+		_, _ = rand.Read(packet.Data[obfsPartLength:packet.Length])
 	case device.MessageCookieReplyType:
 		packet.Length = device.MessageCookieReplySize + kObfuscateNonceLength + rand.Int()%kObfuscateRandomSuffixMaxLength
-		_, _ = rand.Read(packet.Data[device.MessageCookieReplySize:packet.Length])
 		obfsPartLength = device.MessageCookieReplySize
+		_, _ = rand.Read(packet.Data[obfsPartLength:packet.Length])
 	case device.MessageTransportType:
 		obfsPartLength = device.MessageTransportHeaderSize
 		if packet.Length < kObfuscateSuffixAsNonceMinLength {
@@ -143,18 +169,34 @@ func (o *WireGuardObfuscator) Deobfuscate(packet *Packet) {
 		packet.Data[i] ^= xorKey[i]
 	}
 
+	memset := func(b []byte, c byte) {
+		for i := range b {
+			b[i] = c
+		}
+	}
+
 	messageType := packet.MessageType()
 	var obfsPartLength int
 	switch messageType {
 	case device.MessageInitiationType:
-		obfsPartLength = device.MessageInitiationSize
 		packet.Length = device.MessageInitiationSize
+		obfsPartLength = device.MessageInitiationSize
+		if packet.Data[1] == 0x01 {
+			packet.Data[1] = 0
+			obfsPartLength = kMessageInitiationTypeMAC2Offset
+			memset(packet.Data[kMessageInitiationTypeMAC2Offset:device.MessageInitiationSize], 0)
+		}
 	case device.MessageResponseType:
-		obfsPartLength = device.MessageResponseSize
 		packet.Length = device.MessageResponseSize
+		obfsPartLength = device.MessageResponseSize
+		if packet.Data[1] == 0x01 {
+			packet.Data[1] = 0
+			obfsPartLength = kMessageResponseTypeMAC2Offset
+			memset(packet.Data[kMessageResponseTypeMAC2Offset:device.MessageResponseSize], 0)
+		}
 	case device.MessageCookieReplyType:
-		obfsPartLength = device.MessageCookieReplySize
 		packet.Length = device.MessageCookieReplySize
+		obfsPartLength = device.MessageCookieReplySize
 	case device.MessageTransportType:
 		obfsPartLength = device.MessageTransportHeaderSize
 		if packet.Data[1] == 0x01 {
