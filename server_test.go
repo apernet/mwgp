@@ -33,7 +33,7 @@ func TestServerConfigMarshal(t *testing.T) {
 		Timeout: 300,
 		Servers: []*mwgp.ServerConfigServer{
 			{
-				PrivateKey: sk,
+				PrivateKey: &sk,
 				Address:    "192.0.2.1",
 				Peers: []*mwgp.ServerConfigPeer{
 					{

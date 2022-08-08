@@ -7,6 +7,7 @@ import (
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/curve25519"
 	"golang.zx2c4.com/wireguard/device"
+	"os"
 	"strconv"
 )
 
@@ -125,6 +126,34 @@ func (sk *NoisePrivateKey) FromBase64(s string) (err error) {
 
 func (sk *NoisePrivateKey) Base64() (s string) {
 	s = base64.StdEncoding.EncodeToString(sk.NoisePrivateKey[:])
+	return
+}
+
+func (sk *NoisePrivateKey) ReadFromFile(path string) (err error) {
+	exampleKey := "YCV5jh4xfuA4vq+TXYs/BdRT3c+EEgKVy0f1pcvEBlk="
+
+	if path == "" {
+		err = fmt.Errorf("no key file path provided")
+		return
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	bs := make([]byte, len(exampleKey))
+	_, err = f.Read(bs)
+	if err != nil {
+		return
+	}
+
+	err = sk.FromBase64(string(bs))
+	if err != nil {
+		return
+	}
+
 	return
 }
 

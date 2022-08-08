@@ -59,7 +59,8 @@ const (
 )
 
 type ServerConfigServer struct {
-	PrivateKey NoisePrivateKey `json:"privkey"`
+	PrivateKey     *NoisePrivateKey `json:"privkey"`
+	PrivateKeyFile string           `json:"privkey_file,omitempty"`
 
 	Address string              `json:"address"`
 	Peers   []*ServerConfigPeer `json:"peers"`
@@ -77,6 +78,24 @@ func (s *ServerConfigServer) Initialize() (err error) {
 	if len(s.Peers) == 0 {
 		err = fmt.Errorf("no peers")
 		return
+	}
+
+	if s.PrivateKey == nil {
+		if s.PrivateKeyFile == "" {
+			err = fmt.Errorf("no server private key provided")
+			return
+		}
+		s.PrivateKey = &NoisePrivateKey{}
+		err = s.PrivateKey.ReadFromFile(s.PrivateKeyFile)
+		if err != nil {
+			err = fmt.Errorf("cannot read private key from file %s: %w", s.PrivateKeyFile, err)
+			return
+		}
+	} else {
+		if s.PrivateKeyFile != "" {
+			err = fmt.Errorf("cannot specify both privkey and privkey_file")
+			return
+		}
 	}
 
 	var foundFallback bool
@@ -210,7 +229,7 @@ func (s *Server) extractPeer(msg *device.MessageInitiation) (sp *ServerConfigPee
 	var matchedServer *ServerConfigServer
 	var peerPK NoisePublicKey
 	for _, server := range s.servers {
-		peerPK, err = tryDecryptPeerPKWith(server.PrivateKey)
+		peerPK, err = tryDecryptPeerPKWith(*server.PrivateKey)
 		if err == nil {
 			matchedServer = server
 			break
@@ -236,7 +255,7 @@ func (s *Server) extractPeer(msg *device.MessageInitiation) (sp *ServerConfigPee
 		matchedServerPeer = fallbackServerPeer
 	}
 	if matchedServerPeer == nil {
-		err = fmt.Errorf("no matched server peer and no fallback server peer for server %s", matchedServer.PrivateKey)
+		err = fmt.Errorf("no matched server peer and no fallback server peer for server %s", matchedServer.PrivateKey.Base64())
 		return
 	}
 

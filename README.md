@@ -69,7 +69,7 @@ mwgp [server|client] config.json
     },
     {
       // Servers with different private keys can be defined in one mwgp-server and share the listen port
-      "privkey": "6GwcQf52eLIBckRygN+LaW3SfVpv4/Lc4kUyVkYfIkg=",
+      "privkey_file": "/etc/wireguard/private/privkey", // As an alternative to the "privkey", you can also load it from a file, just like PrivateKeyFile= in the systemd.network(5)
       "address": "192.0.2.3",
       "peers": [
         {
