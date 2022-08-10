@@ -145,6 +145,7 @@ func (c *WGITCacheJar) LoadLocked(serverMap map[uint32]*Peer, clientMap map[uint
 
 	bs, err := os.ReadFile(c.CacheFilePath)
 	if err != nil {
+        err = nil
 		return
 	}
 
