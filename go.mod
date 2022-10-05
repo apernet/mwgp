@@ -7,7 +7,7 @@ require (
 	github.com/flynn/json5 v0.0.0-20160717195620-7620272ed633
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
-	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
+	golang.org/x/crypto v0.0.0-20220926161630-eccd6366d1be
 	golang.zx2c4.com/wireguard v0.0.0-20220317033214-ee1c8e0e8789
 )
 

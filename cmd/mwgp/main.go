@@ -10,6 +10,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	_ "github.com/haruue-net/mwgp/resolvers/dns"
+	_ "github.com/haruue-net/mwgp/resolvers/hn2etxt"
 )
 
 var (

@@ -13,32 +13,26 @@ type ClientConfig struct {
 	Server                    string         `json:"server"`
 	Listen                    string         `json:"listen"`
 	Timeout                   int            `json:"timeout"`
-	DNS                       string         `json:"dns,omitempty"`
+	Resolver                  string         `json:"resolver,omitempty"`
 	ClientSourceValidateLevel int            `json:"csvl,omitempty"`
 	ServerSourceValidateLevel int            `json:"ssvl,omitempty"`
 	ClientPublicKey           NoisePublicKey `json:"client_pubkey"`
 	ServerPublicKey           NoisePublicKey `json:"server_pubkey"`
 	ObfuscateKey              string         `json:"obfs"`
 	WGITCacheConfig
+
+	// Deprecated: use Resolver instead
+	DNS string `json:"dns,omitempty"`
 }
 
 type Client struct {
 	wgitTable        *WireGuardIndexTranslationTable
 	server           string
 	cachedServerPeer ServerConfigPeer
+	resolver         UDPAddrResolver
 }
 
 func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
-	if config.DNS != "" {
-		net.DefaultResolver = &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{}
-				return d.DialContext(ctx, "udp", config.DNS)
-			},
-		}
-	}
-
 	client := Client{}
 	client.server = config.Server
 	client.wgitTable = NewWireGuardIndexTranslationTable()
@@ -52,6 +46,20 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 	client.cachedServerPeer.serverPublicKey = config.ServerPublicKey
 	client.cachedServerPeer.ClientPublicKey = &config.ClientPublicKey
 	client.wgitTable.CacheJar.WGITCacheConfig = config.WGITCacheConfig
+	resolver := config.Resolver
+	if config.DNS != "" {
+		if resolver == "" {
+			resolver = fmt.Sprintf("dns+udp://%s", config.DNS)
+		} else {
+			err = fmt.Errorf("option \"dns\" and \"resolver\" is conflicted with each other")
+			return
+		}
+	}
+	client.resolver, err = newUDPAddrResolver(resolver)
+	if err != nil {
+		err = fmt.Errorf("failed to create resolver: %w", err)
+		return
+	}
 
 	var obfuscator WireGuardObfuscator
 	obfuscator.Initialize(config.ObfuscateKey)
@@ -77,7 +85,7 @@ func (c *Client) generateServerPeer(msg *device.MessageInitiation) (fi *ServerCo
 func (c *Client) Start() (err error) {
 	go func() {
 		for {
-			sa, rerr := net.ResolveUDPAddr("udp", c.server)
+			sa, rerr := c.resolver.ResolveUDPAddr(context.Background(), c.server)
 			if rerr != nil {
 				log.Printf("[error] failed to resolve server addr %s: %s, retry in 10 seconds", c.server, rerr.Error())
 				time.Sleep(10 * time.Second)
