@@ -1,29 +1,17 @@
 Multiple WireGuard Proxy
 ===============
 
-mwgp is a WireGuard proxy designed to reuse one UDP port for multiple WireGuard
-interfaces, and still can be connected with the original WireGuard
-implementation.
+mwgp is a proxy software for WireGuard traffic that supports port multiplexing and experimental traffic obfuscation (see below). It is compatible with the official WireGuard client.
 
-It is useful if you want to run multiple WireGuard interfaces with
-`AllowedIPs=0.0.0.0/0, ::/0` on a server that only has limited UDP ports
-available.
-
-This project is internally used in haruue-net to reduce the ports requirement
-of some mystery traffic forwarding services.
-
-This project also comes with an experimental traffic obfuscation (see below).
+A common use case is to run multiple WireGuard instances on a single UDP port, each configured with `AllowedIPs=0.0.0.0/0, ::/0`.
 
 
 ## How it works
 
 See [PRINCIPLES.md](./PRINCIPLES.md).
 
-TLDR: mwgp utilizes the server-side private key to decrypt and extract the
-client-side public key from the handshake initiation messages, distinguishes
-every WireGuard peer by sender and receiver index in the WireGuard protocol,
-and forwards them by matching rules with the client-side public key. mwgp also
-solves the sender and receiver index conflict with a mechanism named "WGIT".
+TLDR: mwgp-server decrypts handshake messages by the given server-side private key. It is able to identify the sender of the message by its public key, keep records of the corresponding index, and forward all subsequent data messages to the desired destination according to this unencrypted index in the packet header, without decrypting the data messages.
+mwgp also resolves the index conflict by a mechanism called WireGuard Index Translation.
 
 
 ## Install
@@ -115,47 +103,32 @@ implementation.
 }
 ```
 
+### Forwarding Table Cache File
 
-### Forwarding Table Cache
+mwgp stores the forwarding table in a disk file to keep the forwarding rules persistent. Otherwise, a restart of mwgp would cause all peers to disconnect for 1~2 minutes, until new handshake messages are exchanged.
 
-mwgp stores its forwarding table on the disk to persist the forwarding status
-across restarts, otherwise, every time when mwgp restarts would cause all
-WireGuard peers it forwards disconnect for 1~2 minutes.
+The cache file is under the user cache directory by default, and can be specified with the `--cache-file` option or the `MWGP_CACHE_FILE` environment variable.
 
-The disk cache file is under the user cache directory by default and can be
-specified with `--cache-file` options and `MWGP_CACHE_FILE` environment
-variable.
+Some configurations, such as forwarding destination and obfuscation settings, are also stored in the same file. As a result, the modification of these settings will not take effect until new handshake messages are exchanged.
 
-Please note some configs, such as forwarding target and obfuscation, are also
-cached as the forwarding status. So if you modify those configs, it might not
-take effect until the WireGuard client sends the next handshake initiation.
-WireGuard sends handshake initiation once around 2 minutes, you can also
-restart the WireGuard client manually to make it resend the handshake
-initiation immediately.
+Typically, a WireGuard initiator sends a handshake message every 2 minutes. You can always restart the client manually to send a handshake initiation message immediately.
 
 
-### Traffic obfuscation (experimental)
+### Traffic Obfuscation (experimental)
 
 > **Note**
 >
 > Traffic obfuscation is still an experimental feature, if you want to try it,
-> please make sure you are using the **exact same version** of mwgp-client
+> please make sure you are using **exact the same version** of mwgp-client
 > and mwgp-server.
 
-mwgp comes with a built-in traffic obfuscation which helps you bypass
-packet-inspection-based QoS. It can be enabled by setting an obfuscation
-password in the server and client configs.
+mwgp comes with a built-in traffic obfuscator which helps you bypass some DPI. Enable this feature by setting an obfuscation password on both ends.
 
 Highlights of mwgp obfuscation:
 
 + Zero MTU overhead.
-+ Appending random bytes (as well as whole message obfuscation) for
-  `MessageInitiation`, `MessageResponse` and `MessageCookieReply`
-  to randomize their length.
-+ As for `MessageTransport`, mwgp only obfuscates the first 16 bytes header for
-  maximized performance, as the remaining payload is already encrypted by
-  chacha20-poly1305.
-+ An mwgp-server with obfuscation enabled still accepts non-obfuscated clients,
-  this is useful for some devices that cannot simply run mwgp-client (for
-  example, connect from the official WireGuard Android/iOS app).
++ `MessageInitiation`, `MessageResponse` and `MessageCookieReply` messages are padded to a random length and then obfuscated.
++ First 16 bytes of `MessageTransport` are obfuscated. The remaining payload is already encrypted by chacha20-poly1305.
++ mwgp-server is still compatible with vanilla WireGuard clients even with the obfuscation setting enabled.
+  This is very useful when some clients do not run mwgp-client.
 
