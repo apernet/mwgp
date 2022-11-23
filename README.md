@@ -10,8 +10,8 @@ A common use case is to run multiple WireGuard instances on a single UDP port, e
 
 See [PRINCIPLES.md](./PRINCIPLES.md).
 
-TLDR: mwgp-server decrypts handshake messages by the given server-side private key. It is able to identify the sender of the message by its public key, keep records of the corresponding index, and forward all subsequent data messages to the desired destination according to this unencrypted index in the packet header, without decrypting the data messages.
-mwgp also resolves the index conflict by a mechanism called WireGuard Index Translation.
+Summary: mwgp-server decrypts WireGuard handshake messages using the configured server-side private key. It is able to identify the sender of the handshake message by its public key. Then it records the corresponding sender index, which is always unencrypted, and forwards all subsequent data messages to the desired destination, according to this sender index. There is no need to decrypt data messages.
+The sender index is generated locally, so there is a small chance of index conflict. mwgp resolves the conflict by a mechanism called WireGuard Index Translation.
 
 
 ## Install
@@ -35,7 +35,7 @@ mwgp [server|client] config.json
 ```json5
 {
   "listen": ":1000",  // Listen address
-  "timeout": 60,      // Timeout before a forwarding entry expired, in seconds
+  "timeout": 60,      // Timeout before a forwarding entry expires, in seconds
   "servers": [
     {
       "privkey": "EFt3ELmZeM/M47qFkgF4RbSOijtdHS43BNIxvxstREI=", // The private key of the WireGuard server, which is required to decrypt the handshake_initiation message for the public_key of the client
@@ -81,15 +81,13 @@ mwgp [server|client] config.json
 
 > **Note**
 >
-> You can connect to the mwgp-server endpoint directly with the official
+> You can connect to a mwgp-server endpoint directly with the official
 > WireGuard implementation.
 
-The mwgp-client provides features like specifying customized DNS server for
-server address resolving, and WireGuard traffic obfuscation.
+The mwgp-client provides additional features: customized DNS server for
+resolving the server address, and traffic obfuscation.
 
-If you do not need these features, you actually do not need to run mwgp-client,
-as you can directly connect to the mwgp-server endpoint with official WireGuard
-implementation.
+If you do not need these features, mwgp-client is not required since mwgp-server is compatible with official WireGuard clients.
 
 ```json5
 {
