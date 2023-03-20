@@ -16,6 +16,7 @@ type ClientConfig struct {
 	Resolver                  string         `json:"resolver,omitempty"`
 	ClientSourceValidateLevel int            `json:"csvl,omitempty"`
 	ServerSourceValidateLevel int            `json:"ssvl,omitempty"`
+	MaxPacketSize             int            `json:"max_packet_size,omitempty"`
 	ClientPublicKey           NoisePublicKey `json:"client_pubkey"`
 	ServerPublicKey           NoisePublicKey `json:"server_pubkey"`
 	ObfuscateKey              string         `json:"obfs"`
@@ -42,6 +43,9 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 		return
 	}
 	client.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
+	if config.MaxPacketSize > 0 {
+		client.wgitTable.MaxPacketSize = uint(config.MaxPacketSize)
+	}
 	client.wgitTable.ExtractPeerFunc = client.generateServerPeer
 	client.cachedServerPeer.serverPublicKey = config.ServerPublicKey
 	client.cachedServerPeer.ClientPublicKey = &config.ClientPublicKey

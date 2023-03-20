@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	kMTU = 1500
+	defaultMaxPacketSize = 65536
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 )
 
 type Packet struct {
-	Data        [kMTU]byte
+	Data        []byte
 	Length      int
 	Source      *net.UDPAddr
 	Destination *net.UDPAddr

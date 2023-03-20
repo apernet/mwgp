@@ -96,6 +96,17 @@ type WireGuardIndexTranslationTable struct {
 	// UpdateAllServerDestinationChan is used to set all server address for mwgp-client (in case of DNS update).
 	// this channel is not intended to be used by mwgp-server.
 	UpdateAllServerDestinationChan chan *net.UDPAddr
+
+	// MaxPacketSize is the maximum size of a WireGuard packet.
+	//
+	// We use the default value of 65536, which is the maximum possible size of a UDP packet.
+	//
+	// However, in most cases, 1500 is sufficient because WireGuard will only send
+	// large UDP packets when you configure a large MTU on the WireGuard interface.
+	//
+	// If you are running mwgp on a server with limited memory, you can adjust this to
+	// reduce memory consumption.
+	MaxPacketSize uint
 }
 
 func defaultReadFromUDPFunc(conn *net.UDPConn, packet *Packet) (err error) {
@@ -128,9 +139,12 @@ func NewWireGuardIndexTranslationTable() (table *WireGuardIndexTranslationTable)
 		clientMap:                      make(map[uint32]*Peer),
 		serverMap:                      make(map[uint32]*Peer),
 		UpdateAllServerDestinationChan: make(chan *net.UDPAddr),
+		MaxPacketSize:                  defaultMaxPacketSize,
 	}
 	table.packetPool.New = func() interface{} {
-		return &Packet{}
+		return &Packet{
+			Data: make([]byte, table.MaxPacketSize),
+		}
 	}
 	return
 }
