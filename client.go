@@ -12,7 +12,7 @@ import (
 type ClientConfig struct {
 	Server                    string         `json:"server"`
 	Listen                    string         `json:"listen"`
-	Timeout                   int            `json:"timeout"`
+	Timeout                   int            `json:"timeout,omitempty"`
 	Resolver                  string         `json:"resolver,omitempty"`
 	ClientSourceValidateLevel int            `json:"csvl,omitempty"`
 	ServerSourceValidateLevel int            `json:"ssvl,omitempty"`
@@ -42,7 +42,9 @@ func NewClientWithConfig(config *ClientConfig) (outClient *Client, err error) {
 		err = fmt.Errorf("invalid listen address %s: %w", config.Listen, err)
 		return
 	}
-	client.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
+	if config.Timeout > 0 {
+		client.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
+	}
 	if config.MaxPacketSize > 0 {
 		client.wgitTable.MaxPacketSize = uint(config.MaxPacketSize)
 	}

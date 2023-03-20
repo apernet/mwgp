@@ -144,7 +144,7 @@ func (s *ServerConfigServer) Initialize() (err error) {
 
 type ServerConfig struct {
 	Listen        string                `json:"listen"`
-	Timeout       int                   `json:"timeout"`
+	Timeout       int                   `json:"timeout,omitempty"`
 	MaxPacketSize int                   `json:"max_packet_size,omitempty"`
 	Servers       []*ServerConfigServer `json:"servers"`
 	ObfuscateKey  string                `json:"obfs"`
@@ -178,7 +178,9 @@ func NewServerWithConfig(config *ServerConfig) (outServer *Server, err error) {
 		err = fmt.Errorf("invalid listen address %s: %w", config.Listen, err)
 		return
 	}
-	server.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
+	if config.Timeout > 0 {
+		server.wgitTable.Timeout = time.Duration(config.Timeout) * time.Second
+	}
 	if config.MaxPacketSize > 0 {
 		server.wgitTable.MaxPacketSize = uint(config.MaxPacketSize)
 	}
